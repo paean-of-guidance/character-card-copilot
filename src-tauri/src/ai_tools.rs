@@ -1,8 +1,8 @@
+use crate::character_storage::CharacterStorage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
-use crate::character_storage::{CharacterStorage, TavernCardV2};
 
 /// AI工具参数定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,7 +39,7 @@ pub struct ToolCallRequest {
     pub tool_name: String,
     pub parameters: HashMap<String, Value>,
     pub character_uuid: Option<String>, // 角色UUID
-    pub context: Option<Value>, // CharacterData or other context
+    pub context: Option<Value>,         // CharacterData or other context
 }
 
 /// AI工具服务
@@ -201,25 +201,26 @@ impl AIToolService {
         };
 
         // 获取当前角色数据
-        let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some("角色不存在".to_string()),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
-            Err(e) => {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some(format!("获取角色数据失败: {}", e)),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
-        };
+        let character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    return ToolResult {
+                        success: false,
+                        data: None,
+                        error: Some("角色不存在".to_string()),
+                        execution_time_ms: start_time.elapsed().as_millis() as u64,
+                    };
+                }
+                Err(e) => {
+                    return ToolResult {
+                        success: false,
+                        data: None,
+                        error: Some(format!("获取角色数据失败: {}", e)),
+                        execution_time_ms: start_time.elapsed().as_millis() as u64,
+                    };
+                }
+            };
 
         let mut tavern_card = character_data.card;
         let mut updated_fields = Vec::new();
@@ -315,23 +316,29 @@ impl AIToolService {
         match CharacterStorage::update_character(app_handle, &character_uuid, &tavern_card) {
             Ok(()) => {
                 // 发送事件通知前端刷新角色数据
-                if let Err(e) = app_handle.emit("character-updated", serde_json::json!({
-                    "character_uuid": character_uuid,
-                    "updated_fields": updated_fields.iter().map(|(k, _)| k).collect::<Vec<_>>()
-                })) {
+                if let Err(e) = app_handle.emit(
+                    "character-updated",
+                    serde_json::json!({
+                        "character_uuid": character_uuid,
+                        "updated_fields": updated_fields.iter().map(|(k, _)| k).collect::<Vec<_>>()
+                    }),
+                ) {
                     eprintln!("发送角色更新事件失败: {}", e);
                 }
 
                 // 发送工具调用成功事件，用于调试
-                if let Err(e) = app_handle.emit("tool-executed", serde_json::json!({
-                    "tool_name": "edit_character",
-                    "character_uuid": character_uuid,
-                    "updated_fields": updated_fields.iter().map(|(k, v)| serde_json::json!({
-                        "field": k,
-                        "description": v
-                    })).collect::<Vec<_>>(),
-                    "update_count": updated_fields.len()
-                })) {
+                if let Err(e) = app_handle.emit(
+                    "tool-executed",
+                    serde_json::json!({
+                        "tool_name": "edit_character",
+                        "character_uuid": character_uuid,
+                        "updated_fields": updated_fields.iter().map(|(k, v)| serde_json::json!({
+                            "field": k,
+                            "description": v
+                        })).collect::<Vec<_>>(),
+                        "update_count": updated_fields.len()
+                    }),
+                ) {
                     eprintln!("发送工具执行事件失败: {}", e);
                 }
 
@@ -349,14 +356,12 @@ impl AIToolService {
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 }
             }
-            Err(e) => {
-                ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some(format!("保存角色数据失败: {}", e)),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                }
-            }
+            Err(e) => ToolResult {
+                success: false,
+                data: None,
+                error: Some(format!("保存角色数据失败: {}", e)),
+                execution_time_ms: start_time.elapsed().as_millis() as u64,
+            },
         }
     }
 

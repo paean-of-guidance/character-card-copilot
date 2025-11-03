@@ -14,6 +14,7 @@ import { AIToolsService } from "@/services/aiTools";
 import { ChatHistoryManager } from "@/services/chatHistory";
 import type { ChatMessage } from "@/types/api";
 import { listen } from '@tauri-apps/api/event';
+import MarkdownRenderer from './MarkdownRenderer.vue';
 
 // 组件props
 const props = defineProps<{
@@ -951,7 +952,15 @@ onMounted(async () => {
                                     : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
                             "
                         >
-                            <div class="text-sm whitespace-pre-wrap">
+                            <MarkdownRenderer
+                                v-if="message.role === 'assistant'"
+                                :content="message.content"
+                                class="text-sm"
+                            />
+                            <div
+                                v-else
+                                class="text-sm whitespace-pre-wrap"
+                            >
                                 {{ message.content }}
                             </div>
                             <div

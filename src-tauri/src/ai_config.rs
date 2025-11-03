@@ -1,8 +1,7 @@
+use super::file_utils::FileUtils;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use tauri::Manager;
-use super::file_utils::FileUtils;
 
 /// AI角色配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,8 +85,7 @@ impl AIConfigService {
         let content = fs::read_to_string(&config_path)
             .map_err(|e| format!("Failed to read AI config file: {}", e))?;
 
-        serde_yaml::from_str(&content)
-            .map_err(|e| format!("Failed to parse AI config: {}", e))
+        serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse AI config: {}", e))
     }
 
     /// 保存AI配置
@@ -104,13 +102,20 @@ impl AIConfigService {
     }
 
     /// 获取指定角色配置
-    pub fn get_role(app_handle: &tauri::AppHandle, role_name: &str) -> Result<Option<AIRole>, String> {
+    pub fn get_role(
+        app_handle: &tauri::AppHandle,
+        role_name: &str,
+    ) -> Result<Option<AIRole>, String> {
         let config = Self::load_config(app_handle)?;
         Ok(config.roles.get(role_name).cloned())
     }
 
     /// 更新角色配置
-    pub fn update_role(app_handle: &tauri::AppHandle, role_name: &str, role: &AIRole) -> Result<(), String> {
+    pub fn update_role(
+        app_handle: &tauri::AppHandle,
+        role_name: &str,
+        role: &AIRole,
+    ) -> Result<(), String> {
         let mut config = Self::load_config(app_handle)?;
         config.roles.insert(role_name.to_string(), role.clone());
         Self::save_config(app_handle, &config)?;
@@ -118,7 +123,11 @@ impl AIConfigService {
     }
 
     /// 添加新角色
-    pub fn add_role(app_handle: &tauri::AppHandle, role_name: &str, role: &AIRole) -> Result<(), String> {
+    pub fn add_role(
+        app_handle: &tauri::AppHandle,
+        role_name: &str,
+        role: &AIRole,
+    ) -> Result<(), String> {
         let mut config = Self::load_config(app_handle)?;
         config.roles.insert(role_name.to_string(), role.clone());
         Self::save_config(app_handle, &config)?;

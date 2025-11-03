@@ -1,7 +1,8 @@
+use super::file_utils::FileUtils;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use super::file_utils::FileUtils;
 
 /// 角色卡元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,7 +62,10 @@ impl CharacterStorage {
     }
 
     /// 获取角色卡文件路径
-    fn get_character_file_path(app_handle: &tauri::AppHandle, uuid: &str) -> Result<PathBuf, String> {
+    fn get_character_file_path(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+    ) -> Result<PathBuf, String> {
         let characters_dir = Self::get_characters_dir(app_handle)?;
         let character_dir = characters_dir.join(uuid);
         FileUtils::ensure_dir_exists(&character_dir)?;
@@ -85,9 +89,12 @@ impl CharacterStorage {
 
         // 如果是文件路径，转换为base64
         if let Ok(image_data) = fs::read(imagePath) {
-            let base64_data = base64::encode(&image_data);
+            let base64_data = STANDARD.encode(&image_data);
             // 根据文件扩展名确定mime类型
-            if let Some(extension) = std::path::Path::new(imagePath).extension().and_then(|s| s.to_str()) {
+            if let Some(extension) = std::path::Path::new(imagePath)
+                .extension()
+                .and_then(|s| s.to_str())
+            {
                 let mime_type = match extension.to_lowercase().as_str() {
                     "png" => "image/png",
                     "jpg" | "jpeg" => "image/jpeg",
@@ -126,10 +133,15 @@ impl CharacterStorage {
                     match FileUtils::read_json_file::<CharacterData>(&card_file) {
                         Ok(mut character) => {
                             // 转换图片路径为base64格式
-                            character.backgroundPath = Self::convert_image_path_to_base64(&character.backgroundPath);
+                            character.backgroundPath =
+                                Self::convert_image_path_to_base64(&character.backgroundPath);
                             characters.push(character);
-                        },
-                        Err(e) => eprintln!("Failed to load character from {}: {}", card_file.display(), e),
+                        }
+                        Err(e) => eprintln!(
+                            "Failed to load character from {}: {}",
+                            card_file.display(),
+                            e
+                        ),
                     }
                 }
             }
@@ -139,7 +151,10 @@ impl CharacterStorage {
     }
 
     /// 根据UUID获取角色卡
-    pub fn get_character_by_uuid(app_handle: &tauri::AppHandle, uuid: &str) -> Result<Option<CharacterData>, String> {
+    pub fn get_character_by_uuid(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+    ) -> Result<Option<CharacterData>, String> {
         let card_file = Self::get_character_file_path(app_handle, uuid)?;
 
         if !card_file.exists() {
@@ -153,7 +168,10 @@ impl CharacterStorage {
     }
 
     /// 创建新的角色卡
-    pub fn create_character(app_handle: &tauri::AppHandle, name: &str) -> Result<CharacterData, String> {
+    pub fn create_character(
+        app_handle: &tauri::AppHandle,
+        name: &str,
+    ) -> Result<CharacterData, String> {
         let uuid = FileUtils::generate_uuid();
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -200,7 +218,11 @@ impl CharacterStorage {
     }
 
     /// 更新角色卡
-    pub fn update_character(app_handle: &tauri::AppHandle, uuid: &str, card: &TavernCardV2) -> Result<(), String> {
+    pub fn update_character(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+        card: &TavernCardV2,
+    ) -> Result<(), String> {
         let card_file = Self::get_character_file_path(app_handle, uuid)?;
 
         if !card_file.exists() {
@@ -240,8 +262,9 @@ impl CharacterStorage {
                     let file_path = entry.path();
                     if let Some(file_name) = file_path.file_name() {
                         if let Some(name_str) = file_name.to_str() {
-                            if name_str.starts_with(&format!("{}_background", uuid)) ||
-                               name_str == &format!("{}_card.png", uuid) {
+                            if name_str.starts_with(&format!("{}_background", uuid))
+                                || name_str == &format!("{}_card.png", uuid)
+                            {
                                 let _ = FileUtils::delete_path(&file_path);
                             }
                         }
@@ -254,7 +277,12 @@ impl CharacterStorage {
     }
 
     /// 上传背景图片
-    pub fn upload_background_image(app_handle: &tauri::AppHandle, uuid: &str, image_data: &[u8], extension: &str) -> Result<String, String> {
+    pub fn upload_background_image(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+        image_data: &[u8],
+        extension: &str,
+    ) -> Result<String, String> {
         let backgrounds_dir = Self::get_backgrounds_dir(app_handle)?;
         let file_name = format!("{}_background.{}", uuid, extension);
         let file_path = backgrounds_dir.join(&file_name);
@@ -276,7 +304,11 @@ impl CharacterStorage {
     }
 
     /// 更新角色背景图片路径
-    pub fn update_character_background_path(app_handle: &tauri::AppHandle, uuid: &str, background_path: &str) -> Result<(), String> {
+    pub fn update_character_background_path(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+        background_path: &str,
+    ) -> Result<(), String> {
         let card_file = Self::get_character_file_path(app_handle, uuid)?;
 
         if !card_file.exists() {

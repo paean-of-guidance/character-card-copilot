@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 /// 通用文件操作工具
@@ -37,7 +37,10 @@ impl FileUtils {
     }
 
     /// 写入JSON文件
-    pub fn write_json_file<T: Serialize + ?Sized>(file_path: &Path, data: &T) -> Result<(), String> {
+    pub fn write_json_file<T: Serialize + ?Sized>(
+        file_path: &Path,
+        data: &T,
+    ) -> Result<(), String> {
         // 确保父目录存在
         if let Some(parent) = file_path.parent() {
             Self::ensure_dir_exists(parent)?;
@@ -62,11 +65,6 @@ impl FileUtils {
                 .map_err(|e| format!("Failed to remove file {}: {}", path.display(), e))?;
         }
         Ok(())
-    }
-
-    /// 检查文件是否存在
-    pub fn path_exists(path: &Path) -> bool {
-        path.exists()
     }
 
     /// 生成UUID v4

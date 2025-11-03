@@ -1,28 +1,20 @@
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionMessageToolCall,
-        ChatCompletionNamedToolChoice,
-        ChatCompletionRequestAssistantMessageArgs,
-        ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestToolMessageArgs,
-        ChatCompletionRequestToolMessageContent,
-        ChatCompletionRequestUserMessageArgs,
-        ChatCompletionToolArgs,
-        ChatCompletionToolChoiceOption,
-        ChatCompletionToolType,
-        CreateChatCompletionRequestArgs,
-        FunctionCall,
-        FunctionName,
-        FunctionObject,
+        ChatCompletionMessageToolCall, ChatCompletionNamedToolChoice,
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestToolMessageArgs, ChatCompletionRequestToolMessageContent,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionToolArgs,
+        ChatCompletionToolChoiceOption, ChatCompletionToolType, CreateChatCompletionRequestArgs,
+        FunctionCall, FunctionName, FunctionObject,
     },
     Client,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::api_config::ApiConfig;
 use super::ai_tools::AITool;
+use super::api_config::ApiConfig;
 
 /// 聊天消息角色 (为前端兼容性保留)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,42 +162,14 @@ pub struct ChatTool {
     pub function: ToolFunction,
 }
 
-/// 流式聊天数据块
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionChunk {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    #[serde(rename = "system_fingerprint")]
-    pub system_fingerprint: Option<String>,
-    pub choices: Vec<ChatCompletionStreamChoice>,
-    pub usage: Option<Usage>,
-}
-
-/// 流式聊天选择
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionStreamChoice {
-    pub index: u32,
-    pub delta: ChatCompletionDelta,
-    #[serde(rename = "finish_reason")]
-    pub finish_reason: Option<String>,
-}
-
-/// 聊天增量
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionDelta {
-    pub role: Option<MessageRole>,
-    pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCallData>>,
-}
-
 /// AI聊天服务
 pub struct AIChatService;
 
 impl AIChatService {
     /// 创建带自定义配置的客户端
-    async fn create_client_with_config(api_config: &ApiConfig) -> Result<Client<OpenAIConfig>, String> {
+    async fn create_client_with_config(
+        api_config: &ApiConfig,
+    ) -> Result<Client<OpenAIConfig>, String> {
         // 构建基础 URL，确保以 /v1 结尾
         let base_url = if api_config.endpoint.ends_with("/v1") {
             api_config.endpoint.clone()
@@ -225,7 +189,9 @@ impl AIChatService {
     }
 
     /// 将前端消息转换为 async-openai 消息格式
-    fn convert_messages_to_openai(messages: &[ChatMessage]) -> Vec<async_openai::types::ChatCompletionRequestMessage> {
+    fn convert_messages_to_openai(
+        messages: &[ChatMessage],
+    ) -> Vec<async_openai::types::ChatCompletionRequestMessage> {
         let mut openai_messages = Vec::new();
 
         for msg in messages {
@@ -274,7 +240,9 @@ impl AIChatService {
                     // 对于工具消息，暂时转换为用户消息
                     if let Some(tool_call_id) = &msg.tool_call_id {
                         let tool_msg = ChatCompletionRequestToolMessageArgs::default()
-                            .content(ChatCompletionRequestToolMessageContent::Text(msg.content.clone()))
+                            .content(ChatCompletionRequestToolMessageContent::Text(
+                                msg.content.clone(),
+                            ))
                             .tool_call_id(tool_call_id.clone())
                             .build()
                             .unwrap();
@@ -325,7 +293,9 @@ impl AIChatService {
             .collect()
     }
 
-    fn convert_tool_choice_to_openai(choice: &ToolChoice) -> Option<ChatCompletionToolChoiceOption> {
+    fn convert_tool_choice_to_openai(
+        choice: &ToolChoice,
+    ) -> Option<ChatCompletionToolChoiceOption> {
         match choice {
             ToolChoice::String(value) => match value.to_lowercase().as_str() {
                 "none" => Some(ChatCompletionToolChoiceOption::None),
@@ -333,7 +303,10 @@ impl AIChatService {
                 "required" => Some(ChatCompletionToolChoiceOption::Required),
                 _ => None,
             },
-            ToolChoice::Function { choice_type, function } => {
+            ToolChoice::Function {
+                choice_type,
+                function,
+            } => {
                 if choice_type.to_lowercase() != "function" {
                     return None;
                 }
@@ -351,62 +324,81 @@ impl AIChatService {
     }
 
     /// 将 async-openai 响应转换为前端兼容格式
-    fn convert_response_from_openai(response: async_openai::types::CreateChatCompletionResponse) -> ChatCompletionResponse {
+    fn convert_response_from_openai(
+        response: async_openai::types::CreateChatCompletionResponse,
+    ) -> ChatCompletionResponse {
         ChatCompletionResponse {
             id: response.id,
             object: response.object,
             created: response.created as u64,
             model: response.model,
             system_fingerprint: response.system_fingerprint,
-            choices: response.choices.into_iter().map(|choice| {
-                ChatCompletionChoice {
-                    index: choice.index as u32,
-                    message: ChatMessage {
-                        role: match choice.message.role {
-                            async_openai::types::Role::System => MessageRole::System,
-                            async_openai::types::Role::User => MessageRole::User,
-                            async_openai::types::Role::Assistant => MessageRole::Assistant,
-                            async_openai::types::Role::Tool => MessageRole::Tool,
-                            async_openai::types::Role::Function => MessageRole::Tool,
+            choices: response
+                .choices
+                .into_iter()
+                .map(|choice| {
+                    ChatCompletionChoice {
+                        index: choice.index as u32,
+                        message: ChatMessage {
+                            role: match choice.message.role {
+                                async_openai::types::Role::System => MessageRole::System,
+                                async_openai::types::Role::User => MessageRole::User,
+                                async_openai::types::Role::Assistant => MessageRole::Assistant,
+                                async_openai::types::Role::Tool => MessageRole::Tool,
+                                async_openai::types::Role::Function => MessageRole::Tool,
+                            },
+                            content: choice.message.content.unwrap_or_default(),
+                            name: None, // async-openai 的消息没有 name 字段
+                            tool_calls: if let Some(calls) = &choice.message.tool_calls {
+                                Some(
+                                    calls
+                                        .iter()
+                                        .map(|call| ToolCallData {
+                                            id: call.id.clone(),
+                                            call_type: "function".to_string(),
+                                            function: ToolCallFunctionData {
+                                                name: call.function.name.clone(),
+                                                arguments: call.function.arguments.clone(),
+                                            },
+                                        })
+                                        .collect(),
+                                )
+                            } else {
+                                None
+                            },
+                            tool_call_id: None,
                         },
-                        content: choice.message.content.unwrap_or_default(),
-                        name: None, // async-openai 的消息没有 name 字段
-                        tool_calls: if let Some(calls) = &choice.message.tool_calls {
-                        Some(calls.iter().map(|call| {
-                            ToolCallData {
-                                id: call.id.clone(),
-                                call_type: "function".to_string(),
-                                function: ToolCallFunctionData {
-                                    name: call.function.name.clone(),
-                                    arguments: call.function.arguments.clone(),
-                                },
-                            }
-                        }).collect())
-                    } else {
-                        None
-                    },
-                        tool_call_id: None,
-                    },
-                    finish_reason: choice.finish_reason
-                        .map(|fr| match fr {
-                            async_openai::types::FinishReason::Stop => "stop".to_string(),
-                            async_openai::types::FinishReason::Length => "length".to_string(),
-                            async_openai::types::FinishReason::ToolCalls => "tool_calls".to_string(),
-                            async_openai::types::FinishReason::FunctionCall => "function_call".to_string(),
-                            async_openai::types::FinishReason::ContentFilter => "content_filter".to_string(),
-                        })
-                        .unwrap_or("stop".to_string()),
-                }
-            }).collect(),
-            usage: response.usage.map(|usage| Usage {
-                prompt_tokens: usage.prompt_tokens,
-                completion_tokens: usage.completion_tokens,
-                total_tokens: usage.total_tokens,
-            }).unwrap_or(Usage {
-                prompt_tokens: 0,
-                completion_tokens: 0,
-                total_tokens: 0,
-            }),
+                        finish_reason: choice
+                            .finish_reason
+                            .map(|fr| match fr {
+                                async_openai::types::FinishReason::Stop => "stop".to_string(),
+                                async_openai::types::FinishReason::Length => "length".to_string(),
+                                async_openai::types::FinishReason::ToolCalls => {
+                                    "tool_calls".to_string()
+                                }
+                                async_openai::types::FinishReason::FunctionCall => {
+                                    "function_call".to_string()
+                                }
+                                async_openai::types::FinishReason::ContentFilter => {
+                                    "content_filter".to_string()
+                                }
+                            })
+                            .unwrap_or("stop".to_string()),
+                    }
+                })
+                .collect(),
+            usage: response
+                .usage
+                .map(|usage| Usage {
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens,
+                })
+                .unwrap_or(Usage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                }),
         }
     }
 
@@ -423,7 +415,9 @@ impl AIChatService {
             let tool_param = ToolParameter {
                 param_type: param.parameter_type.clone(),
                 description: Some(param.description.clone()),
-                enum_values: param.schema.as_ref()
+                enum_values: param
+                    .schema
+                    .as_ref()
                     .and_then(|s| s.get("enum"))
                     .and_then(|e| e.as_array())
                     .map(|arr| {
@@ -482,95 +476,99 @@ impl AIChatService {
             let openai_messages = Self::convert_messages_to_openai(&messages);
             let mut request_builder = CreateChatCompletionRequestArgs::default();
 
-        request_builder.model(&request.model);
-        request_builder.messages(openai_messages);
+            request_builder.model(&request.model);
+            request_builder.messages(openai_messages);
 
-        if let Some(temp) = request.temperature {
-            request_builder.temperature(temp as f32);
-        }
-        if let Some(max_tokens) = request.max_tokens {
-            request_builder.max_tokens(max_tokens);
-        }
-        if let Some(top_p) = request.top_p {
-            request_builder.top_p(top_p as f32);
-        }
-        if let Some(freq_penalty) = request.frequency_penalty {
-            request_builder.frequency_penalty(freq_penalty as f32);
-        }
-        if let Some(pres_penalty) = request.presence_penalty {
-            request_builder.presence_penalty(pres_penalty as f32);
-        }
-        if let Some(tools) = &request.tools {
-            let converted_tools = Self::convert_tools_to_openai(tools);
-            if !converted_tools.is_empty() {
-                request_builder.tools(converted_tools);
+            if let Some(temp) = request.temperature {
+                request_builder.temperature(temp as f32);
             }
-        }
-        if let Some(tool_choice) = &request.tool_choice {
-            if let Some(openai_choice) = Self::convert_tool_choice_to_openai(tool_choice) {
-                request_builder.tool_choice(openai_choice);
+            if let Some(max_tokens) = request.max_tokens {
+                request_builder.max_tokens(max_tokens);
             }
-        }
+            if let Some(top_p) = request.top_p {
+                request_builder.top_p(top_p as f32);
+            }
+            if let Some(freq_penalty) = request.frequency_penalty {
+                request_builder.frequency_penalty(freq_penalty as f32);
+            }
+            if let Some(pres_penalty) = request.presence_penalty {
+                request_builder.presence_penalty(pres_penalty as f32);
+            }
+            if let Some(tools) = &request.tools {
+                let converted_tools = Self::convert_tools_to_openai(tools);
+                if !converted_tools.is_empty() {
+                    request_builder.tools(converted_tools);
+                }
+            }
+            if let Some(tool_choice) = &request.tool_choice {
+                if let Some(openai_choice) = Self::convert_tool_choice_to_openai(tool_choice) {
+                    request_builder.tool_choice(openai_choice);
+                }
+            }
 
-        let openai_request = request_builder.build().map_err(|e| {
-            format!("��������ʧ��: {}", e)
-        })?;
+            let openai_request = request_builder
+                .build()
+                .map_err(|e| format!("��������ʧ��: {}", e))?;
 
-        let response = client
-            .chat()
-            .create(openai_request)
-            .await
-            .map_err(|e| format!("API请求失败: {}", e))?;
+            let response = client
+                .chat()
+                .create(openai_request)
+                .await
+                .map_err(|e| format!("API请求失败: {}", e))?;
 
-        let our_response = Self::convert_response_from_openai(response);
+            let our_response = Self::convert_response_from_openai(response);
 
-        // 检查是否有工具调用需要执行
-        if let Some(choice) = our_response.choices.first() {
-            if let Some(tool_calls) = &choice.message.tool_calls {
-                if !tool_calls.is_empty() {
-                    // 执行工具调用
-                    if let Some(app_handle) = app_handle {
-                        messages.push(choice.message.clone());
-                        for tool_call in tool_calls {
-                            if let Some(tool_result) = Self::execute_single_tool_call(
-                                app_handle,
-                                &tool_call.function.name,
-                                &tool_call.function.arguments,
-                                &messages
-                            ).await {
-                                // 将工具结果添加到消息列表
-                                messages.push(ChatMessage {
-                                    role: MessageRole::Tool,
-                                    content: serde_json::to_string(&tool_result).unwrap_or_default(),
-                                    name: None,
-                                    tool_calls: None,
-                                    tool_call_id: Some(tool_call.id.clone()),
-                                });
-                            } else {
-                                // 工具执行失败
-                                messages.push(ChatMessage {
-                                    role: MessageRole::Tool,
-                                    content: serde_json::json!({
-                                        "success": false,
-                                        "error": "Tool execution failed"
-                                    }).to_string(),
-                                    name: None,
-                                    tool_calls: None,
-                                    tool_call_id: Some(tool_call.id.clone()),
-                                });
+            // 检查是否有工具调用需要执行
+            if let Some(choice) = our_response.choices.first() {
+                if let Some(tool_calls) = &choice.message.tool_calls {
+                    if !tool_calls.is_empty() {
+                        // 执行工具调用
+                        if let Some(app_handle) = app_handle {
+                            messages.push(choice.message.clone());
+                            for tool_call in tool_calls {
+                                if let Some(tool_result) = Self::execute_single_tool_call(
+                                    app_handle,
+                                    &tool_call.function.name,
+                                    &tool_call.function.arguments,
+                                    &messages,
+                                )
+                                .await
+                                {
+                                    // 将工具结果添加到消息列表
+                                    messages.push(ChatMessage {
+                                        role: MessageRole::Tool,
+                                        content: serde_json::to_string(&tool_result)
+                                            .unwrap_or_default(),
+                                        name: None,
+                                        tool_calls: None,
+                                        tool_call_id: Some(tool_call.id.clone()),
+                                    });
+                                } else {
+                                    // 工具执行失败
+                                    messages.push(ChatMessage {
+                                        role: MessageRole::Tool,
+                                        content: serde_json::json!({
+                                            "success": false,
+                                            "error": "Tool execution failed"
+                                        })
+                                        .to_string(),
+                                        name: None,
+                                        tool_calls: None,
+                                        tool_call_id: Some(tool_call.id.clone()),
+                                    });
+                                }
                             }
-                        }
 
-                        // 继续循环，将工具结果发送回AI
-                        continue;
+                            // 继续循环，将工具结果发送回AI
+                            continue;
+                        }
                     }
                 }
             }
-        }
 
-        // 没有工具调用或工具调用完成，返回结果
-        return Ok(our_response);
-    }
+            // 没有工具调用或工具调用完成，返回结果
+            return Ok(our_response);
+        }
     }
 
     /// 执行单个工具调用
@@ -604,7 +602,8 @@ impl AIChatService {
         };
 
         // 执行工具调用
-        let result = crate::ai_tools::AIToolService::execute_tool_call(app_handle, tool_request).await;
+        let result =
+            crate::ai_tools::AIToolService::execute_tool_call(app_handle, tool_request).await;
 
         if result.success {
             Some(serde_json::json!({
@@ -626,7 +625,6 @@ impl AIChatService {
             }))
         }
     }
-
 
     /// 创建流式聊天完成请求 (暂时简化实现)
     pub async fn create_streaming_chat_completion(
@@ -663,29 +661,4 @@ impl AIChatService {
 
         Ok(result)
     }
-
-    /// 构建基础聊天请求
-    pub fn build_base_request(
-        model: &str,
-        messages: &[ChatMessage],
-        temperature: Option<f32>,
-        max_tokens: Option<u32>,
-        tools: Option<Vec<ChatTool>>,
-    ) -> ChatCompletionRequest {
-        ChatCompletionRequest {
-            model: model.to_string(),
-            messages: messages.to_vec(),
-            temperature: temperature.map(|t| t as f64),
-            max_tokens,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop: None,
-            stream: Some(false),
-            tools,
-            tool_choice: None,
-        }
-    }
 }
-
-
