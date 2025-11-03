@@ -14,6 +14,11 @@ const router = createRouter({
       component: () => import('../views/Editor.vue')
     },
     {
+      path: '/editor/:uuid',
+      name: 'editor-with-uuid',
+      component: () => import('../views/Editor.vue')
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('../views/Settings.vue')
