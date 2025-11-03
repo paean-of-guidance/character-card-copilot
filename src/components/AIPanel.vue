@@ -2,6 +2,9 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import { getAllApiConfigs } from '@/services/apiConfig';
 import { AIConfigService, type AIRole } from '@/services/aiConfig';
+import { AIChatService, type ChatCompletionOptions } from '@/services/aiChat';
+import { AIToolsService } from '@/services/aiTools';
+import type { ChatMessage } from '@/types/api';
 
 // 组件props
 const props = defineProps<{
@@ -99,6 +102,19 @@ watch(selectedRole, () => {
   updateCurrentRoleConfig();
 });
 
+// 获取当前选中的API配置
+async function getCurrentApiConfig() {
+  if (!selectedApi.value) return null;
+
+  try {
+    const configs = await getAllApiConfigs();
+    return configs.find(config => config.profile === selectedApi.value) || null;
+  } catch (error) {
+    console.error('获取API配置失败:', error);
+    return null;
+  }
+}
+
 // 自动调整输入框高度
 function adjustTextareaHeight() {
   nextTick(() => {
@@ -181,20 +197,134 @@ async function sendMessage() {
   }
 }
 
-// 模拟AI响应（临时）
+// 真实的AI响应
 async function simulateAIResponse() {
-  // 模拟网络延迟
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    // 检查是否有可用的API配置
+    if (!selectedApi.value) {
+      throw new Error('请先选择API配置');
+    }
 
-  const roleInfo = currentRoleConfig.value
-    ? `[${currentRoleConfig.value.name}] `
-    : '';
+    if (!currentRoleConfig.value) {
+      throw new Error('请先选择AI角色');
+    }
 
-  messages.value.push({
-    role: 'assistant',
-    content: `${roleInfo}这是一个模拟的AI响应。我正在分析您提供的角色数据...`,
-    timestamp: new Date()
-  });
+    // 获取API配置
+    const apiConfigs = await getAllApiConfigs();
+    const apiConfig = apiConfigs.find(config => config.profile === selectedApi.value);
+
+    if (!apiConfig) {
+      throw new Error('API配置不存在');
+    }
+
+    // 验证API配置
+    const validationErrors = AIChatService.validateApiConfig(apiConfig);
+    if (validationErrors.length > 0) {
+      throw new Error(`API配置验证失败: ${validationErrors.join(', ')}`);
+    }
+
+    // 构建聊天消息
+    const conversationHistory = messages.value
+      .slice(-10) // 只保留最近10条消息作为上下文
+      .filter(msg => msg.role !== 'assistant' || msg.content.trim())
+      .map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+    const systemPrompt = currentRoleConfig.value.system_prompt;
+    const currentMessage = userInput.value;
+
+    const chatMessages: ChatMessage[] = AIChatService.buildMessages(
+      systemPrompt,
+      conversationHistory,
+      currentMessage,
+      props.characterData
+    );
+
+    // 获取工具
+    const tools = currentRoleConfig.value.tools_enabled ? await convertToolsToChatTools() : undefined;
+
+    // 构建聊天完成选项
+    const options: ChatCompletionOptions = {
+      model: apiConfig.model,
+      messages: chatMessages,
+      temperature: currentRoleConfig.value.temperature,
+      max_tokens: currentRoleConfig.value.max_tokens,
+      tools,
+      tool_choice: tools ? 'auto' : 'none',
+    };
+
+    console.log('发送聊天请求:', {
+      api: apiConfig.profile,
+      model: apiConfig.model,
+      messageCount: chatMessages.length,
+      toolsEnabled: currentRoleConfig.value.tools_enabled,
+      toolCount: tools?.length || 0
+    });
+
+    // 调用AI服务
+    const response = await AIChatService.createChatCompletion(apiConfig, options);
+
+    if (response.choices.length === 0) {
+      throw new Error('AI未返回响应');
+    }
+
+    const aiMessage = response.choices[0].message.content;
+
+    messages.value.push({
+      role: 'assistant',
+      content: aiMessage,
+      timestamp: new Date()
+    });
+
+    // 处理工具调用（如果有）
+    if (response.choices[0].message.tool_calls) {
+      // TODO: 实现工具调用处理逻辑
+      console.log('AI建议的工具调用:', response.choices[0].message.tool_calls);
+    }
+
+  } catch (error) {
+    console.error('AI调用失败:', error);
+
+    messages.value.push({
+      role: 'assistant',
+      content: `抱歉，AI调用失败：${error instanceof Error ? error.message : '未知错误'}`,
+      timestamp: new Date()
+    });
+  }
+}
+
+// 将AI工具转换为聊天工具格式
+async function convertToolsToChatTools() {
+  try {
+    // 获取可用的AI工具
+    const tools = await AIToolsService.getAvailableTools();
+
+    // 转换为OpenAI格式
+    return tools.map(tool => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: 'object' as const,
+          properties: tool.parameters.reduce((acc, param) => {
+            acc[param.name] = {
+              type: param.parameter_type,
+              description: param.description,
+              ...(param.schema ? { schema: param.schema } : {})
+            };
+            return acc;
+          }, {} as Record<string, any>),
+          required: tool.parameters.filter(p => p.required).map(p => p.name)
+        }
+      }
+    }));
+  } catch (error) {
+    console.error('转换工具失败:', error);
+    return undefined;
+  }
 }
 
 // 处理键盘事件

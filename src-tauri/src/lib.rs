@@ -3,11 +3,13 @@ mod character_storage;
 mod api_config;
 mod ai_config;
 mod ai_tools;
+mod ai_chat;
 
 use character_storage::{CharacterStorage, CharacterData, TavernCardV2};
 use api_config::{ApiConfigService, ApiConfig, CreateApiRequest, UpdateApiRequest, ApiTestResult, ModelInfo};
 use ai_config::{AIConfigService, AIRole};
 use ai_tools::{AIToolService, ToolCallRequest, ToolResult, AITool};
+use ai_chat::{AIChatService, ChatCompletionRequest, ChatCompletionResponse};
 
 // ====================== 角色卡相关命令 ======================
 
@@ -157,6 +159,24 @@ async fn get_tool_categories() -> Result<Vec<&'static str>, String> {
     Ok(AIToolService::get_tool_categories())
 }
 
+// ====================== AI聊天相关命令 ======================
+
+#[tauri::command]
+async fn create_chat_completion(
+    api_config: ApiConfig,
+    request: ChatCompletionRequest,
+) -> Result<ChatCompletionResponse, String> {
+    AIChatService::create_chat_completion(&api_config, &request).await
+}
+
+#[tauri::command]
+async fn create_streaming_chat_completion(
+    api_config: ApiConfig,
+    request: ChatCompletionRequest,
+) -> Result<String, String> {
+    AIChatService::create_streaming_chat_completion(&api_config, &request).await
+}
+
 // ====================== 通用命令 ======================
 
 #[tauri::command]
@@ -201,6 +221,9 @@ pub fn run() {
             get_tools_by_category,
             execute_tool_call,
             get_tool_categories,
+            // AI聊天命令
+            create_chat_completion,
+            create_streaming_chat_completion,
             // 通用命令
             generate_uuid
         ])
