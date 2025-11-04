@@ -80,9 +80,22 @@ const visible = computed(() => {
 async function loadApiConfigs() {
     try {
         const configs = await getAllApiConfigs();
-        apiConfigs.value = configs.filter((config) => config.enabled);
+        // 过滤出已启用的配置
+        const enabledConfigs = configs.filter((config) => config.enabled);
+
+        // 将默认配置排在第一位
+        apiConfigs.value = enabledConfigs.sort((a, b) => {
+            if (a.default && !b.default) return -1;
+            if (!a.default && b.default) return 1;
+            return 0;
+        });
+
+        // 优先选择默认配置，如果没有默认配置则选择第一个
         if (apiConfigs.value.length > 0 && !selectedApi.value) {
-            selectedApi.value = apiConfigs.value[0].profile;
+            const defaultConfig = apiConfigs.value.find(config => config.default);
+            selectedApi.value = defaultConfig
+                ? defaultConfig.profile
+                : apiConfigs.value[0].profile;
         }
     } catch (error) {
         console.error("加载API配置失败:", error);

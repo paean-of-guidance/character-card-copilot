@@ -25,6 +25,9 @@ const apiListKey = ref(0);
 // 测试连接状态
 const testing = ref(false);
 
+// 默认设置成功状态
+const defaultSetSuccess = ref(false);
+
 // 存储原始的配置名称
 const originalProfile = ref<string>("");
 
@@ -111,7 +114,13 @@ async function handleToggleEnabled() {
             showWarningToast("请先测试连接成功后再启用此配置", "无法启用配置");
         }
     } else {
+        // 禁用API时，如果是默认API，自动取消默认状态
         editingApi.value.enabled = false;
+        if (selectedApi.value.default) {
+            editingApi.value.default = false;
+            selectedApi.value.default = false;
+            showWarningToast("已自动取消默认设置", "禁用默认API");
+        }
         autoSave();
     }
 }
@@ -122,9 +131,18 @@ async function handleSetDefault() {
             await setDefaultApiConfig(selectedApi.value.profile);
             selectedApi.value.default = true;
             editingApi.value.default = true;
+
+            // 显示成功状态
+            defaultSetSuccess.value = true;
+
             // 更新左侧列表显示
             await updateApiList();
             showSuccessToast("设为默认配置成功！", "操作成功");
+
+            // 2秒后隐藏成功状态
+            setTimeout(() => {
+                defaultSetSuccess.value = false;
+            }, 2000);
         } catch (error) {
             console.error("设为默认失败:", error);
             showErrorToast("设为默认失败，请重试", "操作失败");
@@ -298,6 +316,14 @@ async function handleTestConnection() {
                                     </div>
                                 </div>
 
+                                <!-- 默认设置成功提示 -->
+                                <div
+                                    v-if="defaultSetSuccess"
+                                    class="mb-3 text-xs px-3 py-2 rounded-lg bg-green-100 text-green-800 border border-green-200 animate-pulse"
+                                >
+                                    ✓ 已设为默认配置
+                                </div>
+
                                 <!-- 控制按钮 -->
                                 <div class="flex flex-wrap gap-2">
                                     <!-- 启用/禁用按钮 -->
@@ -327,11 +353,15 @@ async function handleTestConnection() {
 
                                     <!-- 设为默认按钮 -->
                                     <button
-                                        v-if="!selectedApi.default"
-                                        class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1.5 px-4 rounded-full text-sm transition-colors"
+                                        v-if="!selectedApi.default && selectedApi.enabled"
+                                        class="font-bold py-1.5 px-4 rounded-full text-sm transition-all"
+                                        :class="{
+                                            'bg-blue-500 hover:bg-blue-600 text-white': !defaultSetSuccess,
+                                            'bg-green-500 text-white': defaultSetSuccess
+                                        }"
                                         @click="handleSetDefault"
                                     >
-                                        设为默认
+                                        {{ defaultSetSuccess ? '✓ 已设为默认' : '设为默认' }}
                                     </button>
                                 </div>
                             </div>

@@ -195,16 +195,15 @@ impl ApiConfigService {
     pub fn set_default_api_config(app_handle: &tauri::AppHandle, profile: &str) -> Result<(), String> {
         let mut configs = Self::read_api_configs(app_handle)?;
 
-        let config_found = configs.iter_mut()
-            .any(|config| {
-                if config.profile == profile {
-                    config.default = true;
-                    true
-                } else {
-                    config.default = false;
-                    false
-                }
-            });
+        let mut config_found = false;
+        for config in configs.iter_mut() {
+            if config.profile == profile {
+                config.default = true;
+                config_found = true;
+            } else {
+                config.default = false;
+            }
+        }
 
         if !config_found {
             return Err(format!("未找到配置 '{}'", profile));
