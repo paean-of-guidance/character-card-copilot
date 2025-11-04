@@ -1,4 +1,4 @@
-import type { ApiConfig, CreateApiRequest, UpdateApiRequest, ApiTestResult, ModelInfo, ModelsResponse } from '@/types/api';
+import type { ApiConfig, CreateApiRequest, UpdateApiRequest, ApiTestResult, ModelInfo } from '@/types/api';
 import { invoke } from '@tauri-apps/api/core';
 
 /**

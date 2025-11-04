@@ -9,7 +9,6 @@ import {
     copyApiConfig,
     updateApiConfig,
     setDefaultApiConfig,
-    toggleApiConfig,
     testApiConnection,
     getAllApiConfigs,
 } from "@/services/apiConfig";
@@ -33,10 +32,24 @@ const originalProfile = ref<string>("");
 async function updateApiList() {
     try {
         const configs = await getAllApiConfigs();
-        // 通过改变key强制刷新ApiList组件
+
+        if (selectedApi.value) {
+            const updated = configs.find(
+                (api) => api.profile === selectedApi.value?.profile,
+            );
+            if (updated) {
+                selectedApi.value = { ...updated };
+                if (editingApi.value) {
+                    editingApi.value = { ...updated };
+                    originalProfile.value = updated.profile;
+                }
+            }
+        }
+
+        // ����ǿ��ˢ��ApiList�����key
         apiListKey.value++;
     } catch (error) {
-        console.error("更新API列表失败:", error);
+        console.error("����API�б�ʧ��:", error);
     }
 }
 
@@ -192,7 +205,7 @@ async function handleTestConnection() {
                 <!-- 右侧：配置详情 -->
                 <div class="lg:col-span-2">
                     <div
-                        v-if="selectedApi"
+                        v-if="selectedApi && editingApi"
                         class="bg-white rounded-xl shadow-lg p-4"
                     >
                         <div class="mb-4">
@@ -359,3 +372,4 @@ async function handleTestConnection() {
 </template>
 
 <style scoped></style>
+

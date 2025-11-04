@@ -1,4 +1,4 @@
-import type { CharacterData, CharacterMeta, TavernCardV2 } from '@/types/character';
+import type { CharacterData, TavernCardV2 } from '@/types/character';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
