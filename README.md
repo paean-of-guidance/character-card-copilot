@@ -1,7 +1,94 @@
-# Tauri + Vue + TypeScript
+# Character Card Copilot
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+<div align="center">
 
-## Recommended IDE Setup
+**AI 驱动的角色卡编辑器**
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+使用 AI 辅助编辑和管理 TavernCard V2 格式的角色卡
+
+![Tauri](https://img.shields.io/badge/Tauri-FFC131?logo=tauri&logoColor=white)
+![Vue 3](https://img.shields.io/badge/Vue.js-4FC08D?logo=vue.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+
+</div>
+
+## 📖 项目介绍
+
+Character Card Copilot 是一个桌面应用程序，用于创建、编辑和管理 AI 角色卡，支持 TavernCard V2 标准格式。
+
+---
+
+## ✨ 主要功能
+
+### 📥 **加载角色卡**
+- 从 PNG 图片导入（读取 PNG 元数据）
+- 从 JSON 文件导入
+- 完全兼容 TavernCard V2 格式
+
+### 💾 **导出角色卡**
+- 导出为 PNG 格式（嵌入元数据）
+- 导出为 JSON 格式
+- 保留所有角色数据和世界书内容
+
+### 🤖 **AI 辅助编辑**
+- 使用 AI 生成和优化角色卡内容
+- **支持的字段**：描述、性格、场景、第一条消息、示例对话、系统提示词、历史指令
+- 一键应用 AI 生成的内容
+
+> **注意**：目前 AI 编辑暂时只支持角色卡的主要字段
+
+### 📚 **世界书编辑器**（测试中）
+- 创建、编辑、删除世界书条目
+- 搜索和筛选功能
+- 支持完整的 TavernCard V2 世界书规范
+- Extensions 字段完整支持
+
+> **状态**：🧪 功能还在测试，功能未完善
+
+### ⚙️ **自定义 API 配置**
+- 支持多种 AI 服务提供商：OpenAI、Anthropic、OpenRouter
+- 自定义 API 端点
+- API 密钥和模型配置
+
+---
+
+## 🛠️ 技术栈
+
+- **前端**: Vue 3 + TypeScript + TailwindCSS 4.0
+- **后端**: Tauri + Rust
+- **状态管理**: Pinia
+- **AI 集成**: 支持多种 API 提供商
+
+---
+
+## 📦 快速开始
+
+### 安装依赖
+```bash
+pnpm install
+```
+
+### 运行开发环境
+```bash
+pnpm tauri dev
+```
+
+### 构建应用
+```bash
+pnpm tauri build
+```
+
+---
+
+## 📄 开源协议
+
+[待定]
+
+---
+
+<div align="center">
+
+**由 ❤️ 和 ☕ 驱动**
+
+</div>
