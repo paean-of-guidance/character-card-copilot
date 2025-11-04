@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useAppStore } from "@/stores/app";
+import { useNotification } from "@/composables/useNotification";
 import type { ApiConfig, ApiTestResult } from "@/types/api";
 import ApiList from "@/components/ApiList.vue";
 import ModelSelect from "@/components/ModelSelect.vue";
@@ -14,6 +15,7 @@ import {
 } from "@/services/apiConfig";
 
 const appStore = useAppStore();
+const { showSuccessToast, showErrorToast, showWarningToast } = useNotification();
 const selectedApi = ref<ApiConfig | null>(null);
 const editingApi = ref<ApiConfig | null>(null);
 const lastTestResult = ref<ApiTestResult | null>(null);
@@ -93,7 +95,7 @@ async function handleToggleEnabled() {
             editingApi.value.enabled = true;
             autoSave();
         } else {
-            alert("请先测试连接成功后再启用此配置");
+            showWarningToast("请先测试连接成功后再启用此配置", "无法启用配置");
         }
     } else {
         editingApi.value.enabled = false;
@@ -109,10 +111,10 @@ async function handleSetDefault() {
             editingApi.value.default = true;
             // 更新左侧列表显示
             await updateApiList();
-            alert("设为默认成功！");
+            showSuccessToast("设为默认配置成功！", "操作成功");
         } catch (error) {
             console.error("设为默认失败:", error);
-            alert("设为默认失败，请重试");
+            showErrorToast("设为默认失败，请重试", "操作失败");
         }
     }
 }
@@ -123,10 +125,10 @@ async function handleCopyConfig(api: ApiConfig) {
         // 重新加载API列表 - 通过改变key强制刷新ApiList组件
         apiListKey.value++;
         console.log("复制配置成功:", newApi);
-        alert("复制配置成功！");
+        showSuccessToast("复制配置成功！", "操作完成");
     } catch (error) {
         console.error("复制配置失败:", error);
-        alert("复制配置失败，请重试");
+        showErrorToast("复制配置失败，请重试", "操作失败");
     }
 }
 

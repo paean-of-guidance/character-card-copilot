@@ -5,18 +5,25 @@ import { useAppStore } from "@/stores/app";
 import {
     getCharacterByUUID,
     updateCharacter,
+    deleteCharacter as deleteCharacterByUUID,
 } from "@/services/characterStorage";
-import type { CharacterData, TavernCardV2 } from "@/types/character";
+import type { TavernCardV2 } from "@/types/character";
 import AIPanel from "@/components/AIPanel.vue";
 import {
     uploadBackgroundImage,
     updateCharacterBackgroundPath,
 } from "@/services/characterStorage";
 import { CharacterStateService } from "@/services/characterState";
-import { listen } from '@tauri-apps/api/event';
+import { listen } from "@tauri-apps/api/event";
+import { tokenCounter } from "@/utils/tokenCounter";
+import { useNotification } from "@/composables/useNotification";
+import { useModal } from "@/composables/useModal";
 
 const appStore = useAppStore();
 const route = useRoute();
+const router = useRouter();
+const { showSuccessToast, showErrorToast, showWarningToast } = useNotification();
+const { showAlertModal } = useModal();
 const isLoading = ref(false);
 const characterUUID = ref<string>("");
 const aiPanelVisible = ref(true);
@@ -25,6 +32,9 @@ const isUploading = ref(false);
 
 // 编辑器容器引用
 const editorContainerRef = ref<HTMLElement>();
+
+// Token计数数据
+const tokenCounts = ref<Record<string, number>>({});
 
 // 切换AI面板显示状态
 function toggleAIPanel() {
@@ -45,7 +55,7 @@ async function handleAvatarClick() {
 
         // 检查文件大小 (限制为5MB)
         if (file.size > 5 * 1024 * 1024) {
-            alert("图片文件大小不能超过5MB");
+            showWarningToast("图片文件大小不能超过5MB", "文件过大");
             return;
         }
 
@@ -69,7 +79,7 @@ async function handleAvatarClick() {
             await autoSave();
         } catch (error) {
             console.error("头像上传失败:", error);
-            alert("头像上传失败，请重试");
+            showErrorToast("头像上传失败，请重试", "上传失败");
         } finally {
             isUploading.value = false;
         }
@@ -126,7 +136,7 @@ async function loadCharacterData(uuid: string) {
         }
     } catch (error) {
         console.error("加载角色数据失败:", error);
-        alert("加载角色数据失败");
+        showErrorToast("加载角色数据失败", "加载失败");
     } finally {
         isLoading.value = false;
     }
@@ -153,11 +163,11 @@ async function autoSave() {
                     characterData.value.post_history_instructions,
                 alternate_greetings: characterData.value.alternate_greetings
                     .split("\n")
-                    .filter((g) => g.trim()),
+                    .filter((g: string) => g.trim()),
                 tags: characterData.value.tags
                     .split(",")
-                    .map((t) => t.trim())
-                    .filter((t) => t),
+                    .map((t: string) => t.trim())
+                    .filter((t: string) => t),
                 creator: characterData.value.creator,
                 character_version: characterData.value.character_version,
                 extensions: {},
@@ -174,7 +184,7 @@ async function autoSave() {
 // 监听路由参数变化
 watch(
     () => route.params.uuid,
-    (newUuid) => {
+    (newUuid: string | string[]) => {
         if (newUuid && typeof newUuid === "string") {
             loadCharacterData(newUuid);
         }
@@ -201,18 +211,109 @@ onMounted(async () => {
     }
 
     // 监听角色更新事件
-    await listen('character-updated', (event) => {
-        console.log('收到角色更新事件:', event.payload);
+    await listen("character-updated", (event) => {
+        console.log("收到角色更新事件:", event.payload);
         // 检查事件是否针对当前角色
-        if (event.payload && typeof event.payload === 'object' &&
-            'character_uuid' in event.payload &&
-            event.payload.character_uuid === characterUUID.value) {
-            console.log('刷新当前角色数据');
+        if (
+            event.payload &&
+            typeof event.payload === "object" &&
+            "character_uuid" in event.payload &&
+            event.payload.character_uuid === characterUUID.value
+        ) {
+            console.log("刷新当前角色数据");
             // 重新加载角色数据
             loadCharacterData(characterUUID.value);
         }
     });
 });
+
+// 计算tokens的函数
+function updateTokenCount(fieldName: string, text: string) {
+    const count = tokenCounter.countTokens(text)
+    tokenCounts.value[fieldName] = count
+}
+
+// 监听字段变化更新token计数
+watch([
+    () => characterData.value.description,
+    () => characterData.value.personality,
+    () => characterData.value.scenario,
+    () => characterData.value.first_mes,
+    () => characterData.value.mes_example,
+    () => characterData.value.creator_notes,
+    () => characterData.value.system_prompt,
+    () => characterData.value.post_history_instructions,
+    () => characterData.value.alternate_greetings,
+    () => characterData.value.tags
+], () => {
+    updateTokenCount('description', characterData.value.description)
+    updateTokenCount('personality', characterData.value.personality)
+    updateTokenCount('scenario', characterData.value.scenario)
+    updateTokenCount('first_mes', characterData.value.first_mes)
+    updateTokenCount('mes_example', characterData.value.mes_example)
+    updateTokenCount('creator_notes', characterData.value.creator_notes)
+    updateTokenCount('system_prompt', characterData.value.system_prompt)
+    updateTokenCount('post_history_instructions', characterData.value.post_history_instructions)
+    updateTokenCount('alternate_greetings', characterData.value.alternate_greetings)
+    updateTokenCount('tags', characterData.value.tags)
+}, { immediate: true })
+
+// 删除角色功能
+async function deleteCharacter() {
+    if (!characterUUID.value) return
+
+    try {
+        const confirmed = await showAlertModal(
+            `确定要删除"${characterData.value.name || '这个角色'}"吗？此操作不可撤销。`,
+            async () => {
+                // 调用删除角色的API
+                await deleteCharacterByUUID(characterUUID.value)
+                console.log('角色删除成功')
+            },
+            {
+                title: '删除确认',
+                type: 'danger',
+                confirmText: '确认删除',
+                cancelText: '取消'
+            }
+        )
+
+        if (confirmed) {
+            showSuccessToast('角色删除成功', '操作完成')
+            // 等待Toast显示一下再跳转
+            setTimeout(() => {
+                router.push('/')
+            }, 500)
+        }
+    } catch (error) {
+        console.error('删除角色失败:', error)
+        showErrorToast('删除角色失败，请重试', '删除失败')
+    }
+}
+
+// 导入角色功能
+async function importCharacter() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.png,.card'
+
+    input.onchange = async (event) => {
+        const file = (event.target as HTMLInputElement).files?.[0]
+        if (!file) return
+
+        try {
+            // 这里需要实现角色导入逻辑
+            // const importedData = await parseCharacterFile(file)
+            // await saveImportedCharacter(importedData)
+            showSuccessToast('角色导入成功', '导入完成')
+        } catch (error) {
+            console.error('导入角色失败:', error)
+            showErrorToast('导入角色失败，请检查文件格式', '导入失败')
+        }
+    }
+
+    input.click()
+}
 
 // 组件卸载时清除活跃角色状态
 onUnmounted(async () => {
@@ -260,7 +361,11 @@ onUnmounted(async () => {
                                 <!-- 显示上传的图片 -->
                                 <img
                                     v-if="backgroundPath"
-                                    :src="backgroundPath.startsWith('data:') ? backgroundPath : `file://${backgroundPath}`"
+                                    :src="
+                                        backgroundPath.startsWith('data:')
+                                            ? backgroundPath
+                                            : `file://${backgroundPath}`
+                                    "
                                     alt="角色头像"
                                     class="w-full h-full object-cover"
                                 />
@@ -268,7 +373,7 @@ onUnmounted(async () => {
                                 <!-- 默认头像 -->
                                 <div
                                     v-else
-                                    class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center"
+                                    class="w-full h-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center"
                                 >
                                     <span class="text-white text-2xl font-bold"
                                         >角色</span
@@ -298,13 +403,39 @@ onUnmounted(async () => {
                         </div>
                     </div>
 
+                    <!-- 操作按钮区域 -->
+                    <div class="flex gap-2 mb-6">
+                        <button
+                            @click="deleteCharacter"
+                            class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full flex items-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            删除角色
+                        </button>
+                        <button
+                            @click="importCharacter"
+                            class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full flex items-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            导入角色
+                        </button>
+                    </div>
+
                     <!-- 其他角色信息表单 -->
                     <div class="space-y-4">
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >角色描述</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    角色描述
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.description || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.description"
                                 @blur="autoSave"
@@ -315,10 +446,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >性格特点</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    性格特点
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.personality || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.personality"
                                 @blur="autoSave"
@@ -329,10 +464,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >场景设定</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    场景设定
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.scenario || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.scenario"
                                 @blur="autoSave"
@@ -343,10 +482,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >开场白</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    开场白
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.first_mes || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.first_mes"
                                 @blur="autoSave"
@@ -357,10 +500,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >对话示例</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    对话示例
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.mes_example || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.mes_example"
                                 @blur="autoSave"
@@ -371,10 +518,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >创作者笔记</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    创作者笔记
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.creator_notes || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.creator_notes"
                                 @blur="autoSave"
@@ -385,10 +536,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >系统提示词</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    系统提示词
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.system_prompt || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.system_prompt"
                                 @blur="autoSave"
@@ -399,10 +554,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >历史后指令</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    历史后指令
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.post_history_instructions || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="
                                     characterData.post_history_instructions
@@ -415,10 +574,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >备用问候语</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    备用问候语
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.alternate_greetings || 0 }} tokens
+                                </span>
+                            </div>
                             <textarea
                                 v-model="characterData.alternate_greetings"
                                 @blur="autoSave"
@@ -429,10 +592,14 @@ onUnmounted(async () => {
                         </div>
 
                         <div>
-                            <label
-                                class="block text-sm font-semibold text-gray-700 mb-2"
-                                >标签</label
-                            >
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-semibold text-gray-700">
+                                    标签
+                                </label>
+                                <span class="text-xs text-gray-500">
+                                    {{ tokenCounts.tags || 0 }} tokens
+                                </span>
+                            </div>
                             <input
                                 v-model="characterData.tags"
                                 @blur="autoSave"

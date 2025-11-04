@@ -23,6 +23,9 @@ importers:
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2
+      gpt-tokenizer:
+        specifier: ^3.2.0
+        version: 3.2.0
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -679,6 +682,9 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  gpt-tokenizer@3.2.0:
+    resolution: {integrity: sha512-QRRhzJIHcGbbdzhMGNCHhF+98RVaBaVD5+NYgyPOamqRBEqG5yN9p5j4udnY5FJnkesjdUPsikG/DO4OfJdhpQ==}
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
@@ -1445,6 +1451,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  gpt-tokenizer@3.2.0: {}
 
   graceful-fs@4.2.11: {}
 

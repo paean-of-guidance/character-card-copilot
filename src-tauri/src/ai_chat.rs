@@ -402,60 +402,6 @@ impl AIChatService {
         }
     }
 
-    /// 将AI工具转换为OpenAI工具格式
-    pub fn convert_ai_tools_to_openai(tool: &AITool) -> ChatTool {
-        let mut properties = HashMap::new();
-        let mut required_params = Vec::new();
-
-        for param in &tool.parameters {
-            if param.required {
-                required_params.push(param.name.clone());
-            }
-
-            let tool_param = ToolParameter {
-                param_type: param.parameter_type.clone(),
-                description: Some(param.description.clone()),
-                enum_values: param
-                    .schema
-                    .as_ref()
-                    .and_then(|s| s.get("enum"))
-                    .and_then(|e| e.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .collect()
-                    }),
-                items: None,
-                properties: None,
-                required: if param.required {
-                    Some(vec![param.name.clone()])
-                } else {
-                    None
-                },
-            };
-
-            properties.insert(param.name.clone(), tool_param);
-        }
-
-        ChatTool {
-            tool_type: "function".to_string(),
-            function: ToolFunction {
-                name: tool.name.clone(),
-                description: Some(tool.description.clone()),
-                parameters: Some(ToolParameters {
-                    param_type: "object".to_string(),
-                    properties,
-                    required: if required_params.is_empty() {
-                        None
-                    } else {
-                        Some(required_params)
-                    },
-                }),
-            },
-        }
-    }
-
     /// 创建聊天完成请求
     pub async fn create_chat_completion(
         api_config: &ApiConfig,
@@ -508,7 +454,7 @@ impl AIChatService {
 
             let openai_request = request_builder
                 .build()
-                .map_err(|e| format!("��������ʧ��: {}", e))?;
+                .map_err(|e| format!("请求build错误: {}", e))?;
 
             let response = client
                 .chat()

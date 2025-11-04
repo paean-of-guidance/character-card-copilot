@@ -292,7 +292,7 @@ impl CharacterStorage {
             .map_err(|e| format!("Failed to write background image: {}", e))?;
 
         // 转换为base64返回给前端
-        let base64_data = base64::encode(image_data);
+        let base64_data = STANDARD.encode(image_data);
         let mime_type = match extension {
             "png" => "image/png",
             "jpg" | "jpeg" => "image/jpeg",
