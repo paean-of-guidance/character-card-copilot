@@ -80,6 +80,7 @@ export interface ChatMessage {
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  timestamp?: number; // 消息时间戳（毫秒）
 }
 
 /**

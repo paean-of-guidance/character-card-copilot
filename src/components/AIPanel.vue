@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
 import {
     MdOutlineRefresh,
     MdOutlinePlayCircle,
@@ -14,6 +14,7 @@ import { AIToolsService } from "@/services/aiTools";
 import { ChatHistoryManager } from "@/services/chatHistory";
 import type { ChatMessage } from "@/types/api";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from '@tauri-apps/api/core';
 import MarkdownRenderer from "./MarkdownRenderer.vue";
 import CommandPalette from "./CommandPalette.vue";
 import Modal from "./Modal.vue";
@@ -21,6 +22,19 @@ import { commandService } from "@/services/commandService";
 import { getBuiltinCommands } from "@/services/builtinCommands";
 import type { Command, CommandContext } from "@/types/command";
 import type { ModalOptions } from "@/utils/notification";
+import type {
+  CharacterLoadedPayload,
+  ChatHistoryLoadedPayload,
+  MessageSentPayload,
+  MessageReceivedPayload,
+  ContextBuiltPayload,
+  CharacterUpdatedPayload,
+  ToolExecutedPayload,
+  SessionUnloadedPayload,
+  ErrorPayload,
+  TokenStatsPayload,
+  ProgressPayload
+} from "@/types/events";
 
 // 组件props
 const props = defineProps<{
@@ -79,6 +93,16 @@ const filteredCommands = ref<Command[]>([]);
 const commandSearchQuery = ref("");
 const modalOptions = ref<ModalOptions | null>(null);
 const pendingCommand = ref<Command | null>(null);
+
+// 后端事件相关状态
+const isBackendSessionActive = ref(false);
+const currentSessionUUID = ref<string>("");
+const contextBuiltInfo = ref<any>(null);
+const lastTokenStats = ref<any>(null);
+const isLoadingFromBackend = ref(false);
+
+// 事件监听器清理函数列表
+const eventUnlisteners = ref<(() => void)[]>([]);
 
 // 切换显示/隐藏
 function togglePanel() {
@@ -206,6 +230,18 @@ function generateId(): string {
 
 // 发送消息
 async function sendMessage() {
+    // 优先使用后端会话方式
+    if (isBackendSessionActive.value || !props.characterData) {
+        await sendMessageViaBackend();
+        return;
+    }
+
+    // 降级到原有方式
+    await sendMessageLegacy();
+}
+
+// 原有的发送消息方式（作为降级方案）
+async function sendMessageLegacy() {
     if (!userInput.value.trim() || isLoading.value) return;
 
     const userMessage = userInput.value.trim();
@@ -313,7 +349,7 @@ async function simulateAIResponse() {
         const systemPrompt = currentRoleConfig.value.system_prompt;
         const currentMessage = userInput.value;
 
-        const chatMessages: ChatMessage[] = AIChatService.buildMessages(
+        const chatMessages: ChatMessage[] = await AIChatService.buildMessages(
             systemPrompt,
             conversationHistory,
             currentMessage,
@@ -622,13 +658,266 @@ async function initializeChatHistory() {
     }
 }
 
+// ==================== 后端事件监听 ====================
+
+/**
+ * 初始化后端事件监听器
+ */
+async function initializeBackendEventListeners() {
+    console.log("初始化后端事件监听器...");
+
+    // 角色加载事件
+    const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>("character-loaded", (event) => {
+        console.log("🎭 角色加载事件:", event.payload);
+        const payload = event.payload;
+        currentSessionUUID.value = payload.uuid;
+        isBackendSessionActive.value = true;
+        isLoadingFromBackend.value = false;
+
+        // 可以在这里通知父组件角色数据已更新
+        // emit('character-updated', payload.character_data);
+    });
+
+    // 聊天历史加载事件
+    const unlistenChatHistoryLoaded = await listen<ChatHistoryLoadedPayload>("chat-history-loaded", (event) => {
+        console.log("📚 聊天历史加载事件:", event.payload);
+        const payload = event.payload;
+
+        // 转换为前端消息格式
+        messages.value = payload.chat_history.map((msg, index) => ({
+            id: `${msg.timestamp || index}_${payload.uuid}`,
+            role: msg.role === "assistant" ? "assistant" : "user",
+            content: msg.content,
+            timestamp: new Date(msg.timestamp || Date.now()),
+        }));
+
+        console.log(`从后端加载了 ${messages.value.length} 条聊天历史记录`);
+    });
+
+    // 消息发送事件
+    const unlistenMessageSent = await listen<MessageSentPayload>("message-sent", (event) => {
+        console.log("📤 消息发送事件:", event.payload);
+        const payload = event.payload;
+
+        // 如果消息不在前端列表中，添加它
+        const existingMessage = messages.value.find(msg =>
+            msg.content === payload.message.content &&
+            msg.role === "user"
+        );
+
+        if (!existingMessage) {
+            const userMessageObj = {
+                id: `${payload.message.timestamp}_sent_${payload.uuid}`,
+                role: "user" as const,
+                content: payload.message.content,
+                timestamp: new Date(payload.message.timestamp || Date.now()),
+            };
+            messages.value.push(userMessageObj);
+        }
+    });
+
+    // 消息接收事件
+    const unlistenMessageReceived = await listen<MessageReceivedPayload>("message-received", (event) => {
+        console.log("📥 消息接收事件:", event.payload);
+        const payload = event.payload;
+
+        const aiMessageObj = {
+            id: `${payload.message.timestamp}_received_${payload.uuid}`,
+            role: "assistant" as const,
+            content: payload.message.content,
+            timestamp: new Date(payload.message.timestamp || Date.now()),
+        };
+        messages.value.push(aiMessageObj);
+
+        // 设置加载完成
+        isLoading.value = false;
+    });
+
+    // 上下文构建完成事件
+    const unlistenContextBuilt = await listen<ContextBuiltPayload>("context-built", (event) => {
+        console.log("🔧 上下文构建完成事件:", event.payload);
+        const payload = event.payload;
+        contextBuiltInfo.value = payload.context_result;
+    });
+
+    // 角色更新事件
+    const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>("character-updated", (event) => {
+        console.log("🔄 角色更新事件:", event.payload);
+
+        // 可以在这里通知父组件角色数据已更新
+        // emit('character-updated', event.payload.character_data);
+    });
+
+    // 工具执行事件
+    const unlistenToolExecuted = await listen<ToolExecutedPayload>("tool-executed", (event) => {
+        console.log("🔨 工具执行事件:", event.payload);
+        const payload = event.payload;
+
+        const toolResultMessage = {
+            id: `tool_${payload.timestamp}_${payload.uuid}`,
+            role: "assistant" as const,
+            content: payload.success
+                ? `✅ 工具执行成功：${payload.tool_name}\n${payload.result ? JSON.stringify(payload.result, null, 2) : ""}`
+                : `❌ 工具执行失败：${payload.tool_name}\n错误：${payload.error || "未知错误"}`,
+            timestamp: new Date(payload.timestamp),
+        };
+
+        messages.value.push(toolResultMessage);
+    });
+
+    // 会话卸载事件
+    const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>("session-unloaded", (event) => {
+        console.log("🚪 会话卸载事件:", event.payload);
+        const payload = event.payload;
+
+        if (payload.uuid === currentSessionUUID.value) {
+            isBackendSessionActive.value = false;
+            currentSessionUUID.value = "";
+            messages.value = [];
+            contextBuiltInfo.value = null;
+        }
+    });
+
+    // 错误事件
+    const unlistenError = await listen<ErrorPayload>("error", (event) => {
+        console.error("❌ 错误事件:", event.payload);
+        const payload = event.payload;
+
+        const errorMessageObj = {
+            id: `error_${payload.timestamp}_${payload.uuid || 'unknown'}`,
+            role: "assistant" as const,
+            content: `⚠️ 系统错误 [${payload.error_code}]: ${payload.error_message}`,
+            timestamp: new Date(payload.timestamp),
+        };
+
+        messages.value.push(errorMessageObj);
+        isLoading.value = false;
+    });
+
+    // Token统计事件
+    const unlistenTokenStats = await listen<TokenStatsPayload>("token-stats", (event) => {
+        console.log("📊 Token统计事件:", event.payload);
+        lastTokenStats.value = event.payload.token_usage;
+    });
+
+    // 进度事件
+    const unlistenProgress = await listen<ProgressPayload>("progress", (event) => {
+        console.log("📈 进度事件:", event.payload);
+        const payload = event.payload;
+
+        if (payload.operation === "ai_response") {
+            isLoading.value = payload.progress < 1.0;
+        }
+    });
+
+    // 保存所有清理函数
+    eventUnlisteners.value.push(
+        unlistenCharacterLoaded,
+        unlistenChatHistoryLoaded,
+        unlistenMessageSent,
+        unlistenMessageReceived,
+        unlistenContextBuilt,
+        unlistenCharacterUpdated,
+        unlistenToolExecuted,
+        unlistenSessionUnloaded,
+        unlistenError,
+        unlistenTokenStats,
+        unlistenProgress,
+    );
+
+    console.log("✅ 后端事件监听器初始化完成");
+}
+
+/**
+ * 清理所有事件监听器
+ */
+function cleanupEventListeners() {
+    console.log("清理事件监听器...");
+    eventUnlisteners.value.forEach(unlisten => {
+        try {
+            unlisten();
+        } catch (error) {
+            console.error("清理事件监听器失败:", error);
+        }
+    });
+    eventUnlisteners.value = [];
+    console.log("✅ 事件监听器清理完成");
+}
+
+/**
+ * 通过后端发送消息
+ */
+async function sendMessageViaBackend() {
+    if (!userInput.value.trim() || isLoading.value) return;
+
+    const message = userInput.value.trim();
+    userInput.value = "";
+
+    // 重置输入框高度
+    if (textareaRef.value) {
+        textareaRef.value.style.height = "40px";
+    }
+    inputRows.value = 1;
+
+    // 检查是否有活跃的后端会话
+    if (!isBackendSessionActive.value) {
+        const characterId = getCurrentCharacterId();
+        if (!characterId) {
+            console.error("无法获取角色ID，无法发送消息");
+            return;
+        }
+
+        console.log("触发后端角色会话加载...");
+        isLoadingFromBackend.value = true;
+        try {
+            await invoke('load_character_session', { uuid: characterId });
+            // 等待角色加载事件完成后再发送消息
+            setTimeout(async () => {
+                if (isBackendSessionActive.value) {
+                    await invoke('send_chat_message', { message });
+                } else {
+                    console.error("后端会话加载失败");
+                    isLoadingFromBackend.value = false;
+                }
+            }, 500);
+        } catch (error) {
+            console.error("加载角色会话失败:", error);
+            isLoadingFromBackend.value = false;
+        }
+    } else {
+        // 直接发送消息
+        isLoading.value = true;
+        try {
+            await invoke('send_chat_message', { message });
+        } catch (error) {
+            console.error("发送消息失败:", error);
+            isLoading.value = false;
+        }
+    }
+}
+
 // 监听角色数据变化
 watch(
     () => props.characterData?.name,
     async (newName, oldName) => {
         if (newName !== oldName) {
             console.log(`角色切换: ${oldName} -> ${newName}`);
-            await initializeChatHistory();
+
+            // 如果使用后端会话，重新加载会话
+            if (isBackendSessionActive.value) {
+                const characterId = getCurrentCharacterId();
+                if (characterId) {
+                    isLoadingFromBackend.value = true;
+                    try {
+                        await invoke('load_character_session', { uuid: characterId });
+                    } catch (error) {
+                        console.error("重新加载角色会话失败:", error);
+                        isLoadingFromBackend.value = false;
+                    }
+                }
+            } else {
+                await initializeChatHistory();
+            }
         }
     },
     { immediate: true },
@@ -770,7 +1059,7 @@ async function triggerAIReply(userMessage: string) {
             }));
 
         const systemPrompt = currentRoleConfig.value.system_prompt;
-        const chatMessages: ChatMessage[] = AIChatService.buildMessages(
+        const chatMessages: ChatMessage[] = await AIChatService.buildMessages(
             systemPrompt,
             conversationHistory,
             userMessage,
@@ -1064,9 +1353,12 @@ onMounted(async () => {
     // 初始化命令系统
     initializeCommands();
 
-    // 监听工具执行事件，用于调试
+    // 初始化后端事件监听器
+    await initializeBackendEventListeners();
+
+    // 监听工具执行事件，用于调试（保留原有逻辑作为备用）
     await listen("tool-executed", (event) => {
-        console.log("🔧 工具执行成功:", event.payload);
+        console.log("🔧 工具执行成功 (legacy):", event.payload);
         const payload = event.payload as any;
         if (payload) {
             console.log(`工具名称: ${payload.tool_name}`);
@@ -1083,6 +1375,11 @@ onMounted(async () => {
             }
         }
     });
+});
+
+// 组件卸载时清理事件监听器
+onUnmounted(() => {
+    cleanupEventListeners();
 });
 </script>
 

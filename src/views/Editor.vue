@@ -20,9 +20,16 @@ import { save, open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { CharacterStateService } from "@/services/characterState";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { tokenCounter } from "@/utils/tokenCounter";
 import { useNotification } from "@/composables/useNotification";
 import { useModal } from "@/composables/useModal";
+import type {
+    CharacterLoadedPayload,
+    CharacterUpdatedPayload,
+    SessionUnloadedPayload,
+    ErrorPayload
+} from "@/types/events";
 
 const appStore = useAppStore();
 const route = useRoute();
@@ -45,6 +52,9 @@ const editorContainerRef = ref<HTMLElement>();
 // Token计数数据
 const tokenCounts = ref<Record<string, number>>({});
 
+// 后端事件监听相关状态
+const eventUnlisteners = ref<(() => void)[]>([]);
+
 // 切换AI面板显示状态
 function toggleAIPanel() {
     aiPanelVisible.value = !aiPanelVisible.value;
@@ -59,6 +69,146 @@ function toggleEditorMode() {
     // 世界书模式下自动隐藏AI面板，获得更多空间
     if (newMode === "worldBook") {
         aiPanelVisible.value = false;
+    }
+}
+
+// ==================== 后端事件监听 ====================
+
+/**
+ * 初始化后端事件监听器
+ */
+async function initializeBackendEventListeners() {
+    console.log("Editor: 初始化后端事件监听器...");
+
+    // 角色加载事件
+    const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>("character-loaded", async (event) => {
+        console.log("Editor: 🎭 角色加载事件:", event.payload);
+        const payload = event.payload;
+
+        // 如果是当前编辑的角色，更新本地数据
+        if (payload.uuid === characterUUID.value) {
+            console.log("Editor: 更新角色数据到编辑器");
+            await updateEditorFromCharacterData(payload.character_data);
+        }
+    });
+
+    // 角色更新事件
+    const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>("character-updated", async (event) => {
+        console.log("Editor: 🔄 角色更新事件:", event.payload);
+        const payload = event.payload;
+
+        // 如果是当前编辑的角色，更新本地数据
+        if (payload.uuid === characterUUID.value) {
+            console.log("Editor: 角色数据已更新，同步到编辑器");
+            await updateEditorFromCharacterData(payload.character_data);
+
+            // 显示更新通知
+            switch (payload.update_type) {
+                case 'BasicInfo':
+                    showSuccessToast("角色基本信息已更新", "数据同步");
+                    break;
+                case 'Worldbook':
+                    showSuccessToast("世界书已更新", "数据同步");
+                    break;
+                case 'Tags':
+                    showSuccessToast("角色标签已更新", "数据同步");
+                    break;
+                case 'FullData':
+                    showSuccessToast("角色数据已更新", "数据同步");
+                    break;
+                default:
+                    if (typeof payload.update_type === 'object' && 'Fields' in payload.update_type) {
+                        showSuccessToast("角色字段已更新", "数据同步");
+                    }
+            }
+        }
+    });
+
+    // 会话卸载事件
+    const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>("session-unloaded", (event) => {
+        console.log("Editor: 🚪 会话卸载事件:", event.payload);
+        const payload = event.payload;
+
+        // 如果是当前编辑角色的会话被卸载，显示提示
+        if (payload.uuid === characterUUID.value) {
+            showWarningToast("角色会话已结束", "会话管理");
+        }
+    });
+
+    // 错误事件
+    const unlistenError = await listen<ErrorPayload>("error", (event) => {
+        console.error("Editor: ❌ 错误事件:", event.payload);
+        const payload = event.payload;
+
+        // 如果是当前编辑角色相关的错误，显示错误提示
+        if (payload.uuid === characterUUID.value) {
+            showErrorToast(
+                `系统错误: ${payload.error_message}`,
+                payload.error_code
+            );
+        }
+    });
+
+    // 保存所有清理函数
+    eventUnlisteners.value.push(
+        unlistenCharacterLoaded,
+        unlistenCharacterUpdated,
+        unlistenSessionUnloaded,
+        unlistenError,
+    );
+
+    console.log("Editor: ✅ 后端事件监听器初始化完成");
+}
+
+/**
+ * 清理所有事件监听器
+ */
+function cleanupEventListeners() {
+    console.log("Editor: 清理事件监听器...");
+    eventUnlisteners.value.forEach(unlisten => {
+        try {
+            unlisten();
+        } catch (error) {
+            console.error("Editor: 清理事件监听器失败:", error);
+        }
+    });
+    eventUnlisteners.value = [];
+    console.log("Editor: ✅ 事件监听器清理完成");
+}
+
+/**
+ * 从CharacterData更新编辑器表单数据
+ */
+async function updateEditorFromCharacterData(characterData: any) {
+    try {
+        // 保存完整的角色对象
+        fullCharacterData.value = characterData;
+
+        // 更新表单数据
+        const cardData = characterData.card.data;
+        characterData.value = {
+            name: cardData.name || "",
+            description: cardData.description || "",
+            personality: cardData.personality || "",
+            scenario: cardData.scenario || "",
+            first_mes: cardData.first_mes || "",
+            mes_example: cardData.mes_example || "",
+            creator_notes: cardData.creator_notes || "",
+            system_prompt: cardData.system_prompt || "",
+            post_history_instructions: cardData.post_history_instructions || "",
+            alternate_greetings: cardData.alternate_greetings?.join("\n") || "",
+            tags: cardData.tags?.join(", ") || "",
+            creator: cardData.creator || "",
+            character_version: cardData.character_version || "",
+        };
+
+        // 更新背景路径
+        backgroundPath.value = characterData.backgroundPath || "";
+
+        console.log("Editor: 角色数据已同步到编辑器");
+    } catch (error) {
+        console.error("Editor: 更新编辑器数据失败:", error);
+        showErrorToast("同步角色数据失败", "数据同步错误");
     }
 }
 
@@ -109,7 +259,10 @@ async function handleAvatarClick() {
     input.click();
 }
 
-// 角色数据
+// 完整的角色数据对象（用于传递给 AI）
+const fullCharacterData = ref<any>(null);
+
+// 角色表单数据（用于编辑）
 const characterData = ref({
     name: "",
     description: "",
@@ -136,6 +289,19 @@ async function loadCharacterData(uuid: string) {
         if (character) {
             characterUUID.value = uuid;
             backgroundPath.value = character.backgroundPath || "";
+
+            // 🔥 新增：触发后端会话加载，让AI可以看到角色数据
+            console.log("Editor: 触发后端会话加载...", uuid);
+            try {
+                await invoke('load_character_session', { uuid });
+                console.log("Editor: 后端会话加载成功");
+            } catch (error) {
+                console.error("Editor: 后端会话加载失败:", error);
+            }
+
+            // 保存完整的 character 对象（用于传递给 AI）
+            fullCharacterData.value = character;
+
             // 将TavernCardV2数据映射到表单
             characterData.value = {
                 name: character.card.data.name,
@@ -223,6 +389,9 @@ onMounted(async () => {
         }
     });
 
+    // 初始化后端事件监听器
+    await initializeBackendEventListeners();
+
     // 检查路由参数
     const uuid = route.params.uuid as string;
     if (uuid) {
@@ -231,9 +400,9 @@ onMounted(async () => {
         await CharacterStateService.setActiveCharacter(uuid);
     }
 
-    // 监听角色更新事件
+    // 保留原有的角色更新事件监听器（作为备用）
     await listen("character-updated", (event) => {
-        console.log("收到角色更新事件:", event.payload);
+        console.log("Editor: 收到原有角色更新事件:", event.payload);
         // 检查事件是否针对当前角色
         if (
             event.payload &&
@@ -241,11 +410,16 @@ onMounted(async () => {
             "character_uuid" in event.payload &&
             event.payload.character_uuid === characterUUID.value
         ) {
-            console.log("刷新当前角色数据");
+            console.log("Editor: 刷新当前角色数据（原有事件）");
             // 重新加载角色数据
             loadCharacterData(characterUUID.value);
         }
     });
+});
+
+// 组件卸载时清理事件监听器
+onUnmounted(() => {
+    cleanupEventListeners();
 });
 
 // 计算tokens的函数
@@ -838,7 +1012,7 @@ onUnmounted(async () => {
                 v-if="aiPanelVisible"
                 :visible="aiPanelVisible"
                 panel-type="ai"
-                :character-data="characterData"
+                :character-data="fullCharacterData"
                 @toggle="toggleAIPanel"
             />
 

@@ -202,3 +202,102 @@ export interface CreateWorldBookEntryParams {
  * 世界书条目更新参数
  */
 export type UpdateWorldBookEntryParams = Partial<WorldBookEntry>;
+
+// ====================== 上下文构建相关类型定义 ======================
+
+/**
+ * Token 计数结果
+ */
+export interface TokenCountResult {
+  text: string;
+  token_count: number;
+  char_count: number;
+}
+
+/**
+ * 上下文构建配置选项
+ */
+export interface ContextBuilderOptions {
+  /** Token 预算限制 */
+  tokenLimit: number;
+  /** 是否启用智能裁剪 */
+  enableSmartTruncation: boolean;
+  /** AI 角色定义（可自定义） */
+  aiRole?: string;
+  /** AI 任务定义（可自定义） */
+  aiTask?: string;
+  /** 优先保留聊天历史 */
+  prioritizeChatHistory?: boolean;
+}
+
+/**
+ * 处理后的世界书条目
+ */
+export interface ProcessedWorldBookEntry extends WorldBookEntry {
+  /** 条目的 Token 数量 */
+  tokenCount: number;
+  /** 条目重要性评分 */
+  importanceScore: number;
+}
+
+/**
+ * 构建完成的上下文结果
+ */
+export interface BuiltContextResult {
+  /** System 消息数组 */
+  systemMessages: Array<{
+    role: 'system';
+    content: string;
+  }>;
+  /** Assistant 消息数组 */
+  assistantMessages: Array<{
+    role: 'system' | 'user' | 'assistant';
+    content: string;
+  }>;
+  /** 总 Token 数量 */
+  totalTokens: number;
+  /** Token 分配详情 */
+  tokenAllocation: {
+    character: number;
+    worldbook: number;
+    system: number;
+    tools: number;
+  };
+  /** 是否使用了截断 */
+  wasTruncated: boolean;
+}
+
+/**
+ * Token 预算分配策略
+ */
+export interface TokenBudgetAllocation {
+  /** 角色核心信息（name, description, personality, scenario） */
+  characterCore: number; // 默认 50%
+  /** 角色详细信息（对话、创作指导等） */
+  characterDetails: number; // 默认 25%
+  /** 世界书内容 */
+  worldbook: number; // 默认 20%
+  /** 系统指令和工具 */
+  system: number; // 默认 5%
+}
+
+/**
+ * 上下文构建器配置
+ */
+export interface ContextBuilderConfig {
+  /** Token 预算总限制 */
+  totalTokenLimit: number;
+  /** Token 分配策略 */
+  allocation: TokenBudgetAllocation;
+  /** 默认配置选项 */
+  defaultOptions: ContextBuilderOptions;
+}
+
+/**
+ * 上下文构建错误类型
+ */
+export interface ContextBuilderError {
+  code: 'TOKEN_LIMIT_EXCEEDED' | 'INVALID_DATA' | 'ENCODING_ERROR' | 'UNKNOWN_ERROR';
+  message: string;
+  details?: any;
+}

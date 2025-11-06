@@ -51,7 +51,7 @@ export interface ChatResponse {
 export type StreamCallback = (chunk: ChatCompletionChunk) => void;
 
 /**
- * AI聊天服务
+ * AI聊天服务 - 简化版本（上下文管理已移至后端）
  */
 export class AIChatService {
   /**
@@ -141,14 +141,19 @@ export class AIChatService {
   }
 
   /**
-   * 构建聊天消息数组
+   * 构建聊天消息数组（已弃用 - 上下文构建现在在后端处理）
+   * @deprecated 使用后端会话管理代替
    */
-  static buildMessages(
+  static async buildMessages(
     systemPrompt: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     currentMessage: string,
-    contextData?: any
-  ): ChatMessage[] {
+    _contextData?: any,
+    _options?: any
+  ): Promise<ChatMessage[]> {
+    console.warn('AIChatService.buildMessages() 已弃用，请使用后端会话管理');
+
+    // 降级实现：仅构建基本的消息结构
     const messages: ChatMessage[] = [];
 
     // 系统消息
@@ -157,17 +162,6 @@ export class AIChatService {
         role: 'system',
         content: systemPrompt,
       });
-    }
-
-    // 上下文信息
-    if (contextData) {
-      const contextMessage = this.buildContextMessage(contextData);
-      if (contextMessage) {
-        messages.push({
-          role: 'system',
-          content: contextMessage,
-        });
-      }
     }
 
     // 对话历史
@@ -179,27 +173,46 @@ export class AIChatService {
     });
 
     // 当前用户消息
-    messages.push({
-      role: 'user',
-      content: currentMessage,
-    });
+    if (currentMessage) {
+      messages.push({
+        role: 'user',
+        content: currentMessage,
+      });
+    }
 
     return messages;
   }
 
   /**
-   * 构建上下文消息
+   * 验证API配置
    */
-  private static buildContextMessage(contextData: any): string {
-    try {
-      if (contextData && typeof contextData === 'object') {
-        return `以下是当前的角色数据信息，请基于此信息进行回复：\n\n${JSON.stringify(contextData, null, 2)}`;
-      }
-      return '';
-    } catch (error) {
-      console.error('构建上下文消息失败:', error);
-      return '';
+  static validateApiConfig(config: ApiConfig): string[] {
+    const errors: string[] = [];
+
+    if (!config.profile) {
+      errors.push('配置名称不能为空');
     }
+
+    if (!config.endpoint) {
+      errors.push('API地址不能为空');
+    }
+
+    if (!config.key) {
+      errors.push('API密钥不能为空');
+    }
+
+    if (!config.model) {
+      errors.push('模型名称不能为空');
+    }
+
+    // 验证URL格式
+    try {
+      new URL(config.endpoint);
+    } catch {
+      errors.push('API地址格式无效');
+    }
+
+    return errors;
   }
 
   /**
@@ -213,34 +226,45 @@ export class AIChatService {
       model: response.model,
       choices: response.choices.map(choice => ({
         index: choice.index,
-        message: choice.message,
+        message: {
+          role: choice.message.role,
+          content: choice.message.content,
+          name: choice.message.name,
+          tool_calls: choice.message.tool_calls,
+          tool_call_id: choice.message.tool_call_id,
+        },
         finish_reason: choice.finish_reason,
       })),
-      usage: response.usage,
+      usage: {
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: response.usage.completion_tokens,
+        total_tokens: response.usage.total_tokens,
+      },
     };
   }
 
   /**
-   * 将流式chunk转换为响应格式
+   * 转换流式响应chunk为完整响应
    */
   private static transformChunkToResponse(chunk: ChatCompletionChunk): ChatResponse {
-    const choice = chunk.choices[0];
-    if (!choice) {
-      throw new Error('无效的流式响应chunk');
-    }
-
     return {
       id: chunk.id,
       object: 'chat.completion',
       created: chunk.created,
       model: chunk.model,
-      choices: [{
+      choices: chunk.choices.map(choice => ({
         index: choice.index,
-        message: choice.delta as ChatMessage,
+        message: {
+          role: choice.delta.role || 'assistant',
+          content: choice.delta.content || '',
+          name: choice.delta.name,
+          tool_calls: choice.delta.tool_calls,
+          tool_call_id: choice.delta.tool_call_id,
+        },
         finish_reason: choice.finish_reason || 'stop',
-      }],
-      usage: chunk.usage || {
-        prompt_tokens: 0,
+      })),
+      usage: {
+        prompt_tokens: 0, // 流式响应可能不包含usage信息
         completion_tokens: 0,
         total_tokens: 0,
       },
@@ -265,62 +289,67 @@ export class AIChatService {
           const chunk = JSON.parse(data) as ChatCompletionChunk;
           chunks.push(chunk);
         } catch (error) {
-          console.warn('解析流式数据失败:', error, data);
+          console.error('解析流式响应chunk失败:', error);
         }
       }
     }
 
     return chunks;
   }
+}
 
+// ==================== 后端会话管理接口 ====================
+
+/**
+ * 后端会话管理接口 - 用于新的后端Stateful架构
+ */
+export class BackendSessionService {
   /**
-   * 计算token数量（粗略估算）
+   * 加载角色会话
    */
-  static estimateTokens(text: string): number {
-    // 简单的token估算：大约4个字符=1个token
-    return Math.ceil(text.length / 4);
+  static async loadCharacterSession(uuid: string): Promise<any> {
+    return await invoke('load_character_session', { uuid });
   }
 
   /**
-   * 验证API配置
+   * 发送聊天消息（通过后端会话）
    */
-  static validateApiConfig(config: ApiConfig): string[] {
-    const errors: string[] = [];
-
-    if (!config.endpoint) {
-      errors.push('API端点不能为空');
-    } else if (!this.isValidUrl(config.endpoint)) {
-      errors.push('API端点格式无效');
-    }
-
-    if (!config.key) {
-      errors.push('API密钥不能为空');
-    }
-
-    if (!config.model) {
-      errors.push('模型名称不能为空');
-    }
-
-    return errors;
+  static async sendChatMessage(message: string): Promise<void> {
+    return await invoke('send_chat_message', { message });
   }
 
   /**
-   * 验证URL格式
+   * 卸载角色会话
    */
-  private static isValidUrl(url: string): boolean {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
+  static async unloadCharacterSession(uuid: string): Promise<void> {
+    return await invoke('unload_character_session', { uuid });
   }
 
   /**
-   * 构建API端点URL
+   * 获取会话信息
    */
-  static buildApiEndpoint(baseUrl: string): string {
-    const cleanUrl = baseUrl.replace(/\/$/, ''); // 移除末尾斜杠
-    return `${cleanUrl}/chat/completions`;
+  static async getSessionInfo(uuid: string): Promise<any> {
+    return await invoke('get_session_info', { uuid });
+  }
+
+  /**
+   * 获取所有活跃会话
+   */
+  static async getAllSessions(): Promise<any[]> {
+    return await invoke('get_all_sessions');
+  }
+
+  /**
+   * 保存所有会话历史
+   */
+  static async saveAllSessions(): Promise<number> {
+    return await invoke('save_all_sessions');
+  }
+
+  /**
+   * 清理过期会话
+   */
+  static async cleanupExpiredSessions(maxAgeHours: number): Promise<number> {
+    return await invoke('cleanup_expired_sessions', { maxAgeHours });
   }
 }

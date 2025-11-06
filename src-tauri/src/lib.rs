@@ -6,7 +6,11 @@ mod ai_tools;
 mod ai_chat;
 mod chat_history;
 mod character_state;
+mod character_session;
+mod context_builder;
+mod events;
 mod png_utils;
+mod token_counter;
 mod tools;
 
 use character_storage::{CharacterStorage, CharacterData, TavernCardV2};
@@ -16,6 +20,9 @@ use ai_tools::{AIToolService, ToolCallRequest, ToolResult, AITool};
 use ai_chat::{AIChatService, ChatCompletionRequest, ChatCompletionResponse};
 use chat_history::{ChatHistoryManager, ChatMessage};
 use character_state::{set_active_character, get_active_character, clear_active_character, has_active_character};
+use character_session::{load_character_session, send_chat_message, unload_character_session, get_session_info, get_all_sessions, save_all_sessions, cleanup_expired_sessions};
+use context_builder::build_context;
+use token_counter::{get_token_counter, TokenCountResult};
 
 // ====================== 角色卡相关命令 ======================
 
@@ -269,6 +276,32 @@ async fn get_recent_chat_messages(
     manager.get_recent_messages(count)
 }
 
+// ====================== Token 计数命令 ======================
+
+#[tauri::command]
+async fn count_tokens(text: String) -> Result<TokenCountResult, String> {
+    let counter = get_token_counter();
+    Ok(counter.count_tokens(&text))
+}
+
+#[tauri::command]
+async fn count_tokens_batch(texts: Vec<String>) -> Result<Vec<TokenCountResult>, String> {
+    let counter = get_token_counter();
+    Ok(counter.count_tokens_batch(&texts))
+}
+
+#[tauri::command]
+async fn check_token_limit(text: String, limit: usize) -> Result<bool, String> {
+    let counter = get_token_counter();
+    Ok(counter.is_within_limit(&text, limit))
+}
+
+#[tauri::command]
+async fn truncate_to_token_limit(text: String, limit: usize) -> Result<String, String> {
+    let counter = get_token_counter();
+    Ok(counter.truncate_to_limit(&text, limit))
+}
+
 // ====================== 通用命令 ======================
 
 #[tauri::command]
@@ -334,6 +367,21 @@ pub fn run() {
             get_active_character,
             clear_active_character,
             has_active_character,
+            // 角色会话管理命令
+            load_character_session,
+            send_chat_message,
+            unload_character_session,
+            get_session_info,
+            get_all_sessions,
+            save_all_sessions,
+            cleanup_expired_sessions,
+            // 上下文构建命令
+            build_context,
+            // Token 计数命令
+            count_tokens,
+            count_tokens_batch,
+            check_token_limit,
+            truncate_to_token_limit,
             // 通用命令
             generate_uuid
         ])
