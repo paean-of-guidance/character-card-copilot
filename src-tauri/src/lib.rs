@@ -7,6 +7,7 @@ mod ai_chat;
 mod chat_history;
 mod character_state;
 mod png_utils;
+mod tools;
 
 use character_storage::{CharacterStorage, CharacterData, TavernCardV2};
 use api_config::{ApiConfigService, ApiConfig, CreateApiRequest, UpdateApiRequest, ApiTestResult, ModelInfo};

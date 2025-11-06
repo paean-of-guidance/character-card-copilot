@@ -13,7 +13,6 @@ use async_openai::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::ai_tools::AITool;
 use super::api_config::ApiConfig;
 
 /// 聊天消息角色 (为前端兼容性保留)

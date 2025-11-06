@@ -600,6 +600,7 @@ name = "character-card-copilot"
 version = "0.1.0"
 dependencies = [
  "async-openai",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "image",
