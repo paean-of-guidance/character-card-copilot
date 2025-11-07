@@ -738,8 +738,36 @@ pub async fn send_chat_message(
     // 添加最终AI响应到历史记录（不包含 tool_calls，因为这是工具调用后的最终响应）
     let ai_response = session.add_assistant_message(ai_content.clone(), None);
 
-    // 发送 AI 响应事件
-    EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response)?;
+    // 转换中间消息为 ChatMessage 格式
+    let converted_intermediate_msgs = ai_response_result.intermediate_messages.as_ref().map(|msgs| {
+        msgs.iter().map(|msg| {
+            crate::chat_history::ChatMessage {
+                role: match msg.role {
+                    crate::ai_chat::MessageRole::User => "user".to_string(),
+                    crate::ai_chat::MessageRole::Assistant => "assistant".to_string(),
+                    crate::ai_chat::MessageRole::System => "system".to_string(),
+                    crate::ai_chat::MessageRole::Tool => "tool".to_string(),
+                },
+                content: msg.content.clone(),
+                timestamp: Some(chrono::Utc::now().timestamp_millis()),
+                tool_calls: msg.tool_calls.as_ref().map(|calls| {
+                    calls.iter().map(|call| crate::chat_history::ToolCall {
+                        id: call.id.clone(),
+                        r#type: call.call_type.clone(),
+                        function: crate::chat_history::ToolFunction {
+                            name: call.function.name.clone(),
+                            arguments: call.function.arguments.clone(),
+                        },
+                    }).collect()
+                }),
+                tool_call_id: msg.tool_call_id.clone(),
+                name: msg.name.clone(),
+            }
+        }).collect()
+    });
+
+    // 发送 AI 响应事件（包含中间消息）
+    EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response, converted_intermediate_msgs)?;
 
     // 注：工具执行事件已在 ai_chat.rs 中的工具执行时发送，无需在此重复发送
 
@@ -1094,8 +1122,8 @@ pub async fn regenerate_last_message(app_handle: tauri::AppHandle) -> Result<(),
     // 添加AI响应到历史记录
     let ai_response = session.add_assistant_message(ai_content.clone(), converted_tool_calls);
 
-    // 发送 AI 响应事件
-    EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response)?;
+    // 发送 AI 响应事件（regenerate 场景不会有 intermediate_messages）
+    EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response, None)?;
 
     // 发送Token统计事件
     let token_stats = crate::events::TokenUsageStats {

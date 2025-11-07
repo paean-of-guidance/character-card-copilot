@@ -28,6 +28,8 @@ export interface MessageReceivedPayload {
   uuid: string
   message: ChatMessage
   timestamp: number
+  /** 中间消息（包括 assistant with tool_calls 和 tool results） */
+  intermediate_messages?: ChatMessage[]
 }
 
 // 上下文构建完成事件载荷

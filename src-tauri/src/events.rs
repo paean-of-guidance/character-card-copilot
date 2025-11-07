@@ -36,6 +36,9 @@ pub struct MessageReceivedPayload {
     pub uuid: String,
     pub message: ChatMessage,
     pub timestamp: i64,
+    /// 中间消息（包括 assistant with tool_calls 和 tool results）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intermediate_messages: Option<Vec<ChatMessage>>,
 }
 
 /// 上下文构建完成事件载荷
@@ -198,11 +201,13 @@ impl EventEmitter {
         app: &AppHandle,
         uuid: &str,
         message: &ChatMessage,
+        intermediate_messages: Option<Vec<ChatMessage>>,
     ) -> Result<(), String> {
         let payload = MessageReceivedPayload {
             uuid: uuid.to_string(),
             message: message.clone(),
             timestamp: chrono::Utc::now().timestamp(),
+            intermediate_messages,
         };
 
         app.emit("message-received", &payload)

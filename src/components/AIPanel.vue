@@ -495,6 +495,24 @@ async function initializeBackendEventListeners() {
         console.log("📥 消息接收事件:", event.payload);
         const payload = event.payload;
 
+        // 如果有中间消息（工具调用流程），先插入它们
+        if (payload.intermediate_messages && payload.intermediate_messages.length > 0) {
+            console.log(`🔄 插入 ${payload.intermediate_messages.length} 条中间消息（tool 调用流程）`);
+
+            const intermediateDisplayMessages = payload.intermediate_messages.map((msg, index) => ({
+                id: `${msg.timestamp || Date.now()}_intermediate_${index}_${payload.uuid}`,
+                role: msg.role,
+                content: msg.content,
+                timestamp: new Date(msg.timestamp || Date.now()),
+                tool_calls: msg.tool_calls,
+                tool_call_id: msg.tool_call_id,
+                name: msg.name,
+            }));
+
+            messages.value.push(...intermediateDisplayMessages);
+        }
+
+        // 添加最终的 AI 回复消息
         const aiMessageObj: DisplayMessage = {
             id: `${payload.message.timestamp}_received_${payload.uuid}`,
             role: "assistant",
@@ -529,75 +547,33 @@ async function initializeBackendEventListeners() {
     /**
      * 工具执行事件监听器
      *
-     * 当后端完成工具调用后触发，创建符合 OpenAI 规范的 tool 消息
+     * 用于调试和日志记录工具执行情况
      *
-     * 关键职责：
-     * 1. 接收后端的工具执行结果
-     * 2. 创建 role: "tool" 的消息（非 assistant）
-     * 3. 关联到对应的 tool_call_id
-     * 4. 将结果格式化为 JSON 字符串存储在 content 字段
+     * 注意：工具消息（role: "tool"）现在通过 message-received 事件的
+     *      intermediate_messages 字段统一接收，无需在此创建消息
      *
      * 数据流：
-     * Backend tool execution -> tool-executed event -> Frontend tool message -> UI display
-     *
-     * 重要：此处创建的消息必须与后端保存到 JSONL 的格式完全一致
-     *       - role 必须是 "tool" 而非 "assistant"
-     *       - content 必须是 JSON 字符串而非纯文本描述
-     *       - 必须包含 tool_call_id 和 name 字段
+     * Backend tool execution -> intermediate_messages -> message-received -> UI display
      */
     const unlistenToolExecuted = await listen<ToolExecutedPayload>("tool-executed", (event) => {
-        console.log("🔨 工具执行事件:", event.payload);
         const payload = event.payload;
 
-        // 反向查找对应的 tool_call_id
-        // 从最近的 assistant 消息中找到匹配工具名称的 tool_call
-        let tool_call_id: string | undefined;
-        for (let i = messages.value.length - 1; i >= 0; i--) {
-            const msg = messages.value[i];
-            if (msg.role === 'assistant' && msg.tool_calls) {
-                const matchingCall = msg.tool_calls.find(
-                    call => call.function.name === payload.tool_name
-                );
-                if (matchingCall) {
-                    tool_call_id = matchingCall.id;
-                    break;
-                }
-            }
+        if (payload.success) {
+            console.log("✅ 工具执行成功:", {
+                工具名称: payload.tool_name,
+                执行时间: `${payload.execution_time_ms}ms`,
+                结果: payload.result
+            });
+        } else {
+            console.error("❌ 工具执行失败:", {
+                工具名称: payload.tool_name,
+                错误: payload.error,
+                执行时间: `${payload.execution_time_ms}ms`
+            });
         }
 
-        // 构建标准化的工具结果对象
-        const toolResult = {
-            success: payload.success,
-            data: payload.result,
-            error: payload.error,
-            execution_time_ms: payload.execution_time_ms
-        };
-
-        // 创建 tool 消息（遵循 OpenAI tool message 格式）
-        const toolResultMessage: DisplayMessage = {
-            id: `tool_${payload.timestamp}_${payload.uuid}`,
-            role: "tool", // ⚠️ 必须是 "tool" 而非 "assistant"
-            content: JSON.stringify(toolResult), // ⚠️ 必须是 JSON 字符串
-            timestamp: new Date(payload.timestamp * 1000), // 转换为毫秒
-            tool_call_id: tool_call_id, // 关联到调用请求
-            name: payload.tool_name, // 工具名称
-        };
-
-        messages.value.push(toolResultMessage);
-
-        // 同步到 store
-        const characterId = currentSessionUUID.value || payload.uuid;
-        if (characterId) {
-            const storeMessages = messages.value.map(m => ({
-                role: m.role,
-                content: m.content,
-                timestamp: Math.floor(m.timestamp.getTime() / 1000),
-                tool_calls: m.tool_calls,
-                tool_call_id: m.tool_call_id,
-                name: m.name,
-            }));
-            chatStore.setChatHistory(characterId, storeMessages);
-        }
+        // 注：tool 消息会通过 message-received 事件的 intermediate_messages 字段接收
+        // 无需在此手动创建，避免消息重复
     });
 
     // 会话卸载事件

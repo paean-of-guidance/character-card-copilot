@@ -356,7 +356,10 @@ impl AIToolTrait for CreateWorldBookEntryTool {
             "comment".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("备注，需要简短，格式为<function(rule/background或者其他的)>[10字/words以内概括]".to_string()),
+                description: Some(
+                    "备注，需要简短，格式为(rule/background或者其他的)[10字/words以内概括]"
+                        .to_string(),
+                ),
                 enum_values: None,
                 items: None,
                 properties: None,
