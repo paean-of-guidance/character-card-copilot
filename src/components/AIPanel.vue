@@ -8,7 +8,6 @@ import {
 import { getAllApiConfigs } from "@/services/apiConfig";
 import type { ApiConfig, ChatMessage } from "@/types/api";
 import { AIConfigService, type AIRole } from "@/services/aiConfig";
-import { ChatHistoryManager } from "@/services/chatHistory";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from '@tauri-apps/api/core';
 import MarkdownRenderer from "./MarkdownRenderer.vue";
@@ -45,9 +44,6 @@ const emits = defineEmits<{
 
 // 默认可见
 const isVisible = ref(props.visible !== false);
-
-// 聊天历史记录管理
-let chatHistoryManager: ChatHistoryManager | null = null;
 
 // 使用 Pinia Store 管理聊天状态
 const chatStore = useChatStore();
@@ -282,7 +278,6 @@ async function initializeChatHistory() {
     if (!props.characterData?.name) {
         // 如果没有角色数据，清空消息
         messages.value = [];
-        chatHistoryManager = null;
         return;
     }
 
@@ -297,11 +292,10 @@ async function initializeChatHistory() {
             return;
         }
 
-        // 创建新的聊天历史管理器
-        chatHistoryManager = new ChatHistoryManager(characterId);
-
-        // 加载历史记录
-        const history = await chatHistoryManager.loadHistory();
+        // 直接调用后端加载历史记录
+        const history = await invoke<ChatMessage[]>('load_chat_history', {
+            characterId
+        });
 
         // 转换为前端消息格式
         if (history.length > 0) {

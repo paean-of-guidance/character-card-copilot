@@ -190,6 +190,32 @@ impl CharacterSession {
         message
     }
 
+    /// 添加工具执行结果消息到历史记录
+    pub fn add_tool_message(
+        &mut self,
+        content: String,
+        tool_call_id: String,
+        name: Option<String>,
+    ) -> ChatMessage {
+        let message = ChatMessage {
+            role: "tool".to_string(),
+            content,
+            name,
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id),
+            timestamp: Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64,
+            ),
+        };
+
+        self.chat_history.push(message.clone());
+        self.last_active = Utc::now();
+        message
+    }
+
     /// 保存聊天历史到文件
     pub async fn save_history(&self, app_handle: &AppHandle) -> Result<(), String> {
         let history_manager = ChatHistoryManager::new(app_handle, &self.uuid);
@@ -564,11 +590,26 @@ pub async fn send_chat_message(
             _ => crate::ai_chat::MessageRole::User,
         };
 
+        // 转换 tool_calls（如果存在）
+        let converted_tool_calls = msg.tool_calls.as_ref().map(|calls| {
+            calls
+                .iter()
+                .map(|tc| crate::ai_chat::ToolCallData {
+                    id: tc.id.clone(),
+                    call_type: tc.r#type.clone(),
+                    function: crate::ai_chat::ToolCallFunctionData {
+                        name: tc.function.name.clone(),
+                        arguments: tc.function.arguments.clone(),
+                    },
+                })
+                .collect()
+        });
+
         AIChatMessage {
             role,
             content: msg.content.clone(),
             name: msg.name.clone(),
-            tool_calls: None, // 简化实现，暂时不转换tool_calls
+            tool_calls: converted_tool_calls,
             tool_call_id: msg.tool_call_id.clone(),
         }
     }));
@@ -656,8 +697,46 @@ pub async fn send_chat_message(
             .collect::<Vec<_>>()
     });
 
-    // 添加AI响应到历史记录
-    let ai_response = session.add_assistant_message(ai_content.clone(), converted_tool_calls);
+    // 处理中间消息（工具调用和工具结果）
+    if let Some(intermediate_msgs) = &ai_response_result.intermediate_messages {
+        for msg in intermediate_msgs {
+            match msg.role {
+                crate::ai_chat::MessageRole::Assistant => {
+                    // 保存带 tool_calls 的 assistant 消息
+                    if msg.tool_calls.is_some() {
+                        let converted_calls = msg.tool_calls.as_ref().map(|calls| {
+                            calls
+                                .iter()
+                                .map(|call| crate::chat_history::ToolCall {
+                                    id: call.id.clone(),
+                                    r#type: call.call_type.clone(),
+                                    function: crate::chat_history::ToolFunction {
+                                        name: call.function.name.clone(),
+                                        arguments: call.function.arguments.clone(),
+                                    },
+                                })
+                                .collect::<Vec<_>>()
+                        });
+                        session.add_assistant_message(msg.content.clone(), converted_calls);
+                    }
+                }
+                crate::ai_chat::MessageRole::Tool => {
+                    // 保存工具结果
+                    if let Some(tool_call_id) = &msg.tool_call_id {
+                        session.add_tool_message(
+                            msg.content.clone(),
+                            tool_call_id.clone(),
+                            msg.name.clone(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // 添加最终AI响应到历史记录（不包含 tool_calls，因为这是工具调用后的最终响应）
+    let ai_response = session.add_assistant_message(ai_content.clone(), None);
 
     // 发送 AI 响应事件
     EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response)?;

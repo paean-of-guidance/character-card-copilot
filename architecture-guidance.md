@@ -19,7 +19,7 @@
 ### Key Components
 - **AIPanel** (`src/components/AIPanel.vue`):
   - Mount lifecycle (`initializeBackendEventListeners()` at line 334) subscribes to eleven backend events (`character-loaded`, `chat-history-loaded`, `message-sent`, `message-received`, `context-built`, `character-updated`, `tool-executed`, `session-unloaded`, `error`, `token-stats`, `progress`—lines 338‑476) so UI state, token counters, and progress bars react in real time. Payloads are mirrored into the Pinia chat store (`chatStore.setChatHistory` and `setActiveCharacter` at lines 363‑364).
-  - `ChatHistoryManager` is instantiated per character (lines 301‑305) and uses the `save_chat_message`/`load_chat_history` Tauri endpoints under the hood, but the panel primarily relies on backend events for fresh data and only falls back to `loadHistory` if a session reload is required.
+  - AIPanel directly invokes `load_chat_history` command when initializing sessions (line 296), then exclusively relies on backend events (`message-sent`, `message-received`, `chat-history-loaded`) and the Pinia chat store for all subsequent state management.
   - Message submission funnels through `sendMessage()` (`line 226`) → `sendMessageViaBackend()` (`line 522`). That helper lazily reloads the session if it has expired (`load_character_session` at line 545), then uses `invoke('send_chat_message', { message })` (`lines 549 & 563`), letting the Rust `CharacterSession` handle context building, API calls, and event emission. Delete/edit/regenerate actions call the matching commands (`edit_chat_message` at line 642, `delete_chat_message` at line 682, `regenerate_last_message` at line 709).
   - The built-in command palette (lines 734‑833) sources its catalog via `backendCommandService.getCommands()`/`searchCommands()` (lines 736‑750) and executes selections through `backendCommandService.executeCommand()` (line 823). Confirmation prompts leverage the global modal service, and TODOs at lines 835/839 remind us that toast notifications still need to wrap command results.
 - **WorldBookEditor** (`src/components/WorldBookEditor.vue:94-170`) loads character books through the Pinia world-book store and registers `world-book-entry-created` and `tool-executed` listeners (`lines 104-134`). Whenever the backend AI tools emit one of those events, the editor automatically reloads entries so the UI reflects AI-authored additions/removals without manual refreshes.
@@ -32,7 +32,6 @@
   - `src/services/apiConfig.ts:13-142` mirrors API profile CRUD + testing; each helper invokes the commands defined in `src-tauri/src/lib.rs:95-147` backed by `ApiConfigService` (`src-tauri/src/api_config.rs:58-320`).
   - `src/services/aiConfig.ts:13-58` surfaces AI role CRUD against the commands in `src-tauri/src/lib.rs:152-189`/`src-tauri/src/ai_config.rs:75-172`.
   - `src/services/aiTools.ts:66-137` exposes the tool registry endpoints (`get_available_tools`, `get_tools_by_category`, `execute_tool_call`, `get_tool_categories`) that ultimately reach `ToolRegistry` in `src-tauri/src/tools/registry.rs:1-83`.
-  - `src/services/chatHistory.ts:21-113` is a typed façade over the history commands defined at `src-tauri/src/lib.rs:206-292`, letting components load, clear, edit, or delete persisted rows as needed.
   - `src/services/backendCommandService.ts:8-85` is the only command gateway currently used by the UI; it memoizes `/command_system/tauri_commands` results for responsive palette searches.
 
 ## Backend Architecture & Data Flows
@@ -75,7 +74,7 @@
 | AI chat session actions from `AIPanel` (`invoke('load_character_session')`, `send_chat_message`, `delete_chat_message`, etc.) | `load_character_session`, `send_chat_message`, `unload_character_session`, `delete_chat_message`, `edit_chat_message`, `regenerate_last_message` | `SessionManager` & `CharacterSession` (`src-tauri/src/character_session.rs:475-905`) |
 | Command palette (`backendCommandService` at `src/services/backendCommandService.ts:8-83`) | `get_available_commands`, `search_commands`, `execute_command` | Command registry (`src-tauri/src/command_system/tauri_commands.rs:19-90`) |
 | Tool APIs (`src/services/aiTools.ts:66-115`) | `get_available_tools`, `get_tools_by_category`, `execute_tool_call`, `get_tool_categories` | Tool registry + executors (`src-tauri/src/tools/registry.rs:1-83`, `character_editor.rs`, `world_book_creator.rs`) |
-| Chat history manager (`src/services/chatHistory.ts:21-113`) | `save_chat_message`, `load_chat_history`, `clear_chat_history`, `delete_chat_message`, `update_chat_message`, `get_last_chat_message`, `get_recent_chat_messages` | File-backed history (`src-tauri/src/chat_history.rs:1-159` via handlers in `lib.rs:206-292`) |
+| AIPanel chat operations (`src/components/AIPanel.vue`) | `load_chat_history`, `delete_chat_message` (other operations handled via event system + Pinia Store) | File-backed history (`src-tauri/src/chat_history.rs:1-159` via handlers in `lib.rs:206-292`) |
 | Token utilities (`src/utils/tokenCounter.ts:6-57` & any UI invoking backend) | `count_tokens`, `count_tokens_batch`, `check_token_limit`, `truncate_to_token_limit` | `src-tauri/src/token_counter.rs:1-74` |
 
 ## Partially Implemented / In-Progress Areas
@@ -88,19 +87,18 @@
 ## Code Health & Maintenance Status
 
 ### ✅ Completed Cleanup (2025-11-07)
-The following legacy code has been successfully removed (1,256 lines):
+The following legacy code has been successfully removed (1,387 lines):
 - ~~`src/services/aiChat.ts`~~ – Removed unused `AIChatService` and `BackendSessionService` classes (312 lines)
 - ~~`src/services/commandService.ts`~~ – Removed deprecated frontend command system (250 lines)
 - ~~`src/services/builtinCommands.ts`~~ – Removed obsolete built-in commands (112 lines)
 - ~~`src/types/command.ts`~~ – Removed deprecated command type definitions (99 lines)
 - ~~`src/services/COMMAND_DEVELOPMENT_GUIDE.md`~~ – Removed outdated documentation (483 lines)
+- ~~`src/services/chatHistory.ts`~~ – Removed redundant `ChatHistoryManager` class (124 lines) + cleaned up AIPanel.vue imports (7 lines)
+  - AIPanel now directly invokes `load_chat_history` command and relies exclusively on backend event system + Pinia Store
+  - All 7 methods eliminated: only `loadHistory()` was in use, replaced by direct `invoke()` call
+  - Zero breaking changes: functionality preserved through event-driven architecture
 
-**Impact**: All removed code was verified to have zero references in the active codebase. The application now exclusively uses the backend command system (`backendCommandService` + `src-tauri/src/command_system`).
-
-### ⚠️ Future Optimization Candidates
-- **ChatHistoryManager** (`src/services/chatHistory.ts:29-113`): Most methods are redundant as the backend persists chat history centrally and pushes updates via events. The AI panel only uses `loadHistory()`. Consider simplifying once session management is fully stable:
-  - **Keep**: `loadHistory()` (currently in use)
-  - **Evaluate for removal**: `saveMessage()`, `clearHistory()`, `deleteMessage()`, `updateMessage()`, `getLastMessage()`, `getRecentMessages()` (backend events + Pinia store can replace these)
+**Impact**: All removed code was verified to have zero references in the active codebase. The application now exclusively uses the backend command system (`backendCommandService` + `src-tauri/src/command_system`) and event-driven state management.
 
 ## Suggested Next Steps
 
@@ -113,6 +111,3 @@ The following legacy code has been successfully removed (1,256 lines):
    - `src/components/ApiList.vue:38` – Add delete confirmation dialog
    - `src/components/AIPanel.vue:835-839` – Add toast notifications for command palette success/error states
 4. **Type Cleanup**: Remove the legacy `AITool` interface from `src/services/aiTools.ts:43` in favor of the OpenAI `ChatTool` schema to reduce type confusion.
-
-### Low Priority
-5. **ChatHistoryManager Simplification**: Once session management is fully stable, consider simplifying or removing redundant `ChatHistoryManager` methods that are no longer used by the UI.

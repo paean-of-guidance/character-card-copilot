@@ -105,6 +105,11 @@ pub struct ChatCompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<ChatCompletionChoice>,
     pub usage: Usage,
+
+    /// 中间消息（包括 assistant with tool_calls 和 tool results）
+    /// 用于保存工具调用的完整上下文
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intermediate_messages: Option<Vec<ChatMessage>>,
 }
 
 /// 聊天完成请求 (兼容性)
@@ -398,6 +403,7 @@ impl AIChatService {
                     completion_tokens: 0,
                     total_tokens: 0,
                 }),
+            intermediate_messages: None, // 初始时没有中间消息，在工具调用时会填充
         }
     }
 
@@ -411,6 +417,9 @@ impl AIChatService {
         let mut messages = request.messages.clone();
         let max_iterations = 5; // 防止无限循环
         let mut iteration = 0;
+
+        // 收集中间消息（包括 assistant with tool_calls 和 tool results）
+        let mut intermediate_messages: Vec<ChatMessage> = Vec::new();
 
         loop {
             if iteration >= max_iterations {
@@ -469,6 +478,8 @@ impl AIChatService {
                     if !tool_calls.is_empty() {
                         // 执行工具调用
                         if let Some(app_handle) = app_handle {
+                            // 保存 assistant 消息（包含 tool_calls）到中间消息
+                            intermediate_messages.push(choice.message.clone());
                             messages.push(choice.message.clone());
 
                             // 获取当前角色UUID用于事件发送
@@ -511,14 +522,16 @@ impl AIChatService {
                                     }
 
                                     // 将工具结果添加到消息列表
-                                    messages.push(ChatMessage {
+                                    let tool_message = ChatMessage {
                                         role: MessageRole::Tool,
                                         content: serde_json::to_string(&tool_result)
                                             .unwrap_or_default(),
                                         name: None,
                                         tool_calls: None,
                                         tool_call_id: Some(tool_call.id.clone()),
-                                    });
+                                    };
+                                    intermediate_messages.push(tool_message.clone());
+                                    messages.push(tool_message);
                                 } else {
                                     // 工具执行失败
                                     if let Err(e) = crate::events::EventEmitter::send_tool_executed(
@@ -533,7 +546,7 @@ impl AIChatService {
                                         eprintln!("发送工具执行失败事件失败: {}", e);
                                     }
 
-                                    messages.push(ChatMessage {
+                                    let tool_error_message = ChatMessage {
                                         role: MessageRole::Tool,
                                         content: serde_json::json!({
                                             "success": false,
@@ -543,7 +556,9 @@ impl AIChatService {
                                         name: None,
                                         tool_calls: None,
                                         tool_call_id: Some(tool_call.id.clone()),
-                                    });
+                                    };
+                                    intermediate_messages.push(tool_error_message.clone());
+                                    messages.push(tool_error_message);
                                 }
                             }
 
@@ -555,7 +570,12 @@ impl AIChatService {
             }
 
             // 没有工具调用或工具调用完成，返回结果
-            return Ok(our_response);
+            // 如果有中间消息，添加到响应中
+            let mut final_response = our_response;
+            if !intermediate_messages.is_empty() {
+                final_response.intermediate_messages = Some(intermediate_messages);
+            }
+            return Ok(final_response);
         }
     }
 
