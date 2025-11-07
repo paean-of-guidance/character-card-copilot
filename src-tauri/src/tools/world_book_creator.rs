@@ -1,6 +1,6 @@
 use super::AIToolTrait;
+use crate::ai_chat::{ChatTool, ToolFunction, ToolParameter as ChatToolParameter, ToolParameters};
 use crate::ai_tools::{ToolCallRequest, ToolResult};
-use crate::ai_chat::{ChatTool, ToolFunction, ToolParameters, ToolParameter as ChatToolParameter};
 use crate::character_storage::{CharacterBook, CharacterStorage, WorldBookEntry};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -356,7 +356,7 @@ impl AIToolTrait for CreateWorldBookEntryTool {
             "comment".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("备注，需要简短，格式为<function>[10字/words以内概括]".to_string()),
+                description: Some("备注，需要简短，格式为<function(rule/background或者其他的)>[10字/words以内概括]".to_string()),
                 enum_values: None,
                 items: None,
                 properties: None,
