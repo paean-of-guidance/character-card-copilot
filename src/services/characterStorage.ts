@@ -74,6 +74,21 @@ export async function updateCharacter(uuid: string, card: TavernCardV2): Promise
 }
 
 /**
+ * 更新角色的单个字段（安全更新，保留世界书等其他数据）
+ * @param uuid 角色UUID
+ * @param fieldName 字段名
+ * @param fieldValue 字段值
+ */
+export async function updateCharacterField(uuid: string, fieldName: string, fieldValue: string): Promise<void> {
+  try {
+    await invoke('update_character_field', { uuid, fieldName, fieldValue });
+  } catch (error) {
+    console.error('更新角色字段失败:', error);
+    throw new Error(error as string);
+  }
+}
+
+/**
  * 删除角色卡
  * @param uuid 角色UUID
  */

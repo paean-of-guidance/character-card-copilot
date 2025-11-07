@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import MarkdownRenderer from "./MarkdownRenderer.vue";
 import CommandPalette from "./CommandPalette.vue";
 import Modal from "./Modal.vue";
+import ToolExecutionCard from "./ToolExecutionCard.vue";
 import { backendCommandService } from "@/services/backendCommandService";
 import type { CommandMetadata } from "@/types/commands";
 import type { ModalOptions } from "@/utils/notification";
@@ -30,6 +31,30 @@ import type {
   TokenStatsPayload,
   ProgressPayload
 } from "@/types/events";
+
+/**
+ * 前端消息显示类型
+ *
+ * 扩展自后端的 ChatMessage 类型，添加前端特有的显示和交互字段
+ *
+ * 关键差异：
+ * - timestamp: 后端使用 number (Unix 毫秒)，前端转换为 Date 对象方便显示
+ * - id: 前端生成的唯一标识符，用于 v-for 的 key 绑定
+ * - isEditing: 前端编辑状态标记
+ *
+ * 重要：保持 role 字段的完整性
+ * - 必须保留所有可能的 role 值：'user' | 'assistant' | 'tool'
+ * - 不能将 'tool' 消息转换为其他 role 类型
+ * - 必须保留 tool_calls, tool_call_id, name 等可选字段
+ */
+interface DisplayMessage extends Omit<ChatMessage, 'timestamp'> {
+    /** 前端生成的唯一 ID，用于列表渲染 key */
+    id: string;
+    /** 消息时间戳（Date 对象，方便前端格式化显示） */
+    timestamp: Date;
+    /** 消息是否处于编辑状态 */
+    isEditing?: boolean;
+}
 
 // 组件props
 const props = defineProps<{
@@ -49,15 +74,7 @@ const isVisible = ref(props.visible !== false);
 const chatStore = useChatStore();
 
 // 对话相关状态 - 保持为 ref，但同步到 store
-const messages = ref<
-    Array<{
-        id: string;
-        role: "user" | "assistant";
-        content: string;
-        timestamp: Date;
-        isEditing?: boolean;
-    }>
->([]);
+const messages = ref<DisplayMessage[]>([]);
 
 const userInput = ref("");
 const isLoading = ref(false);
@@ -98,6 +115,89 @@ const isLoadingFromBackend = ref(false);
 
 // 事件监听器清理函数列表
 const eventUnlisteners = ref<(() => void)[]>([]);
+
+/**
+ * 分组消息类型
+ *
+ * 使用类型判别联合 (Discriminated Union) 区分不同类型的消息组：
+ * - normal: 普通的用户或助手消息
+ * - tool-execution: 工具调用流程组（包含调用请求和执行结果）
+ */
+type GroupedMessage =
+    | { type: 'normal'; message: DisplayMessage }
+    | { type: 'tool-execution'; toolCalls: import('@/types/api').ToolCall[]; toolResults: DisplayMessage[]; timestamp: Date };
+
+/**
+ * 消息分组计算属性
+ *
+ * 将原始消息列表转换为分组显示结构，主要功能：
+ * 1. 合并工具调用流程：将 assistant 消息的 tool_calls 和后续的 tool 消息合并为一个卡片
+ * 2. 保持普通消息不变：user 和不带 tool_calls 的 assistant 消息独立显示
+ *
+ * 处理逻辑示例：
+ * ```
+ * 原始消息序列：
+ * [
+ *   { role: 'user', content: '搜索XXX' },
+ *   { role: 'assistant', content: '', tool_calls: [{id: 'call_1', ...}] },
+ *   { role: 'tool', content: '{...}', tool_call_id: 'call_1' },
+ *   { role: 'assistant', content: '根据搜索结果...' }
+ * ]
+ *
+ * 分组后：
+ * [
+ *   { type: 'normal', message: {...} },                    // user 消息
+ *   { type: 'tool-execution', toolCalls: [...], toolResults: [...] }, // 工具调用组
+ *   { type: 'normal', message: {...} }                     // assistant 回复
+ * ]
+ * ```
+ *
+ * @returns 分组后的消息列表，用于渲染不同类型的消息卡片
+ */
+const groupedMessages = computed<GroupedMessage[]>(() => {
+    const result: GroupedMessage[] = [];
+    let i = 0;
+
+    while (i < messages.value.length) {
+        const msg = messages.value[i];
+
+        // 检测工具调用起始点：带 tool_calls 的 assistant 消息
+        if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+            const toolCalls = msg.tool_calls;
+            const toolResults: DisplayMessage[] = [];
+            let j = i + 1;
+
+            // 收集紧随其后的所有 tool 消息（工具执行结果）
+            while (j < messages.value.length && messages.value[j].role === 'tool') {
+                toolResults.push(messages.value[j]);
+                j++;
+            }
+
+            // 添加工具执行组（单个卡片显示）
+            result.push({
+                type: 'tool-execution',
+                toolCalls,
+                toolResults,
+                timestamp: msg.timestamp
+            });
+
+            i = j; // 跳过已处理的 tool 消息
+        } else if (msg.role !== 'tool') {
+            // 普通消息（user 或不带 tool_calls 的 assistant）
+            result.push({
+                type: 'normal',
+                message: msg
+            });
+            i++;
+        } else {
+            // 孤立的 tool 消息（没有对应的 tool_calls）
+            // 理论上不应该发生，跳过以保证健壮性
+            i++;
+        }
+    }
+
+    return result;
+});
 
 // 切换显示/隐藏
 function togglePanel() {
@@ -297,13 +397,17 @@ async function initializeChatHistory() {
             characterId
         });
 
-        // 转换为前端消息格式
+        // 转换为前端消息格式（保留所有 role 类型）
         if (history.length > 0) {
             messages.value = history.map((msg, index) => ({
                 id: `${msg.timestamp || index}_${characterId}`,
-                role: msg.role === "assistant" ? "assistant" : "user",
+                role: msg.role, // 保留原始 role：user/assistant/tool
                 content: msg.content,
                 timestamp: new Date(msg.timestamp || Date.now()),
+                // 保留工具调用相关字段
+                tool_calls: msg.tool_calls,
+                tool_call_id: msg.tool_call_id,
+                name: msg.name,
             }));
 
             console.log(
@@ -345,12 +449,16 @@ async function initializeBackendEventListeners() {
         console.log("📚 聊天历史加载事件:", event.payload);
         const payload = event.payload;
 
-        // 转换为前端消息格式
+        // 转换为前端消息格式（保留所有 role 类型）
         messages.value = payload.chat_history.map((msg, index) => ({
             id: `${msg.timestamp || index}_${payload.uuid}`,
-            role: msg.role === "assistant" ? "assistant" : "user",
+            role: msg.role, // 保留原始 role：user/assistant/tool
             content: msg.content,
             timestamp: new Date((msg.timestamp || Date.now() / 1000) * 1000),
+            // 保留工具调用相关字段
+            tool_calls: msg.tool_calls,
+            tool_call_id: msg.tool_call_id,
+            name: msg.name,
         }));
 
         // 同步到 store
@@ -387,11 +495,15 @@ async function initializeBackendEventListeners() {
         console.log("📥 消息接收事件:", event.payload);
         const payload = event.payload;
 
-        const aiMessageObj = {
+        const aiMessageObj: DisplayMessage = {
             id: `${payload.message.timestamp}_received_${payload.uuid}`,
-            role: "assistant" as const,
+            role: "assistant",
             content: payload.message.content,
             timestamp: new Date(payload.message.timestamp || Date.now()),
+            // 保留工具调用字段（如果有）
+            tool_calls: payload.message.tool_calls,
+            tool_call_id: payload.message.tool_call_id,
+            name: payload.message.name,
         };
         messages.value.push(aiMessageObj);
 
@@ -414,21 +526,78 @@ async function initializeBackendEventListeners() {
         // emit('character-updated', event.payload.character_data);
     });
 
-    // 工具执行事件
+    /**
+     * 工具执行事件监听器
+     *
+     * 当后端完成工具调用后触发，创建符合 OpenAI 规范的 tool 消息
+     *
+     * 关键职责：
+     * 1. 接收后端的工具执行结果
+     * 2. 创建 role: "tool" 的消息（非 assistant）
+     * 3. 关联到对应的 tool_call_id
+     * 4. 将结果格式化为 JSON 字符串存储在 content 字段
+     *
+     * 数据流：
+     * Backend tool execution -> tool-executed event -> Frontend tool message -> UI display
+     *
+     * 重要：此处创建的消息必须与后端保存到 JSONL 的格式完全一致
+     *       - role 必须是 "tool" 而非 "assistant"
+     *       - content 必须是 JSON 字符串而非纯文本描述
+     *       - 必须包含 tool_call_id 和 name 字段
+     */
     const unlistenToolExecuted = await listen<ToolExecutedPayload>("tool-executed", (event) => {
         console.log("🔨 工具执行事件:", event.payload);
         const payload = event.payload;
 
-        const toolResultMessage = {
+        // 反向查找对应的 tool_call_id
+        // 从最近的 assistant 消息中找到匹配工具名称的 tool_call
+        let tool_call_id: string | undefined;
+        for (let i = messages.value.length - 1; i >= 0; i--) {
+            const msg = messages.value[i];
+            if (msg.role === 'assistant' && msg.tool_calls) {
+                const matchingCall = msg.tool_calls.find(
+                    call => call.function.name === payload.tool_name
+                );
+                if (matchingCall) {
+                    tool_call_id = matchingCall.id;
+                    break;
+                }
+            }
+        }
+
+        // 构建标准化的工具结果对象
+        const toolResult = {
+            success: payload.success,
+            data: payload.result,
+            error: payload.error,
+            execution_time_ms: payload.execution_time_ms
+        };
+
+        // 创建 tool 消息（遵循 OpenAI tool message 格式）
+        const toolResultMessage: DisplayMessage = {
             id: `tool_${payload.timestamp}_${payload.uuid}`,
-            role: "assistant" as const,
-            content: payload.success
-                ? `✅ 工具执行成功：${payload.tool_name}\n${payload.result ? JSON.stringify(payload.result, null, 2) : ""}`
-                : `❌ 工具执行失败：${payload.tool_name}\n错误：${payload.error || "未知错误"}`,
-            timestamp: new Date(payload.timestamp),
+            role: "tool", // ⚠️ 必须是 "tool" 而非 "assistant"
+            content: JSON.stringify(toolResult), // ⚠️ 必须是 JSON 字符串
+            timestamp: new Date(payload.timestamp * 1000), // 转换为毫秒
+            tool_call_id: tool_call_id, // 关联到调用请求
+            name: payload.tool_name, // 工具名称
         };
 
         messages.value.push(toolResultMessage);
+
+        // 同步到 store
+        const characterId = currentSessionUUID.value || payload.uuid;
+        if (characterId) {
+            const storeMessages = messages.value.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: Math.floor(m.timestamp.getTime() / 1000),
+                tool_calls: m.tool_calls,
+                tool_call_id: m.tool_call_id,
+                name: m.name,
+            }));
+            chatStore.setChatHistory(characterId, storeMessages);
+        }
     });
 
     // 会话卸载事件
@@ -601,6 +770,11 @@ watch(
         });
     },
 );
+
+// 获取消息在 messages 数组中的索引
+function getMessageIndex(message: DisplayMessage): number {
+    return messages.value.findIndex(m => m.id === message.id);
+}
 
 // 编辑消息
 function editMessage(index: number) {
@@ -897,9 +1071,13 @@ onMounted(async () => {
             console.log(`📦 从 Store 恢复 ${storedHistory.length} 条聊天历史`);
             messages.value = storedHistory.map((msg, index) => ({
                 id: `${msg.timestamp || index}_${characterId}`,
-                role: msg.role === "assistant" ? "assistant" : "user",
+                role: msg.role, // 保留原始 role：user/assistant/tool
                 content: msg.content,
                 timestamp: new Date((msg.timestamp || Date.now() / 1000) * 1000),
+                // 保留工具调用相关字段
+                tool_calls: msg.tool_calls,
+                tool_call_id: msg.tool_call_id,
+                name: msg.name,
             }));
         }
     }
@@ -918,25 +1096,8 @@ onMounted(async () => {
         }
     }
 
-    // 监听工具执行事件，用于调试（保留原有逻辑作为备用）
-    await listen("tool-executed", (event) => {
-        console.log("🔧 工具执行成功 (legacy):", event.payload);
-        const payload = event.payload as any;
-        if (payload) {
-            console.log(`工具名称: ${payload.tool_name}`);
-            console.log(`角色UUID: ${payload.character_uuid}`);
-            console.log(`更新字段数: ${payload.update_count}`);
-            if (
-                payload.updated_fields &&
-                Array.isArray(payload.updated_fields)
-            ) {
-                console.log("更新详情:");
-                payload.updated_fields.forEach((field: any) => {
-                    console.log(`  - ${field.field}: ${field.description}`);
-                });
-            }
-        }
-    });
+    // 注：tool-executed 事件监听器已在上方注册（Line 477），
+    // 负责创建 tool 消息并添加到 messages 数组
 });
 
 // 组件卸载时清理事件监听器并保存状态到 store
@@ -1052,40 +1213,50 @@ onUnmounted(() => {
 
                 <div v-else class="space-y-4">
                     <div
-                        v-for="(message, index) in messages"
-                        :key="message.id"
+                        v-for="(group, groupIndex) in groupedMessages"
+                        :key="group.type === 'normal' ? group.message.id : `tool-${groupIndex}`"
                         class="flex"
                         :class="
-                            message.role === 'user'
+                            group.type === 'normal' && group.message.role === 'user'
                                 ? 'justify-end'
                                 : 'justify-start'
                         "
                     >
+                        <!-- 工具执行卡片 -->
+                        <ToolExecutionCard
+                            v-if="group.type === 'tool-execution'"
+                            :tool-calls="group.toolCalls"
+                            :tool-results="group.toolResults"
+                            :timestamp="group.timestamp"
+                        />
+
+                        <!-- 普通消息 -->
                         <div
+                            v-else-if="group.type === 'normal'"
                             class="max-w-[80%] px-4 py-2 rounded-lg group relative"
                             :class="
-                                message.role === 'user'
+                                group.message.role === 'user'
                                     ? 'bg-blue-500 text-white rounded-br-sm'
                                     : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
                             "
                         >
                             <MarkdownRenderer
-                                v-if="message.role === 'assistant'"
-                                :content="message.content"
+                                v-if="group.message.role === 'assistant'"
+                                :content="group.message.content"
                                 class="text-sm"
                             />
                             <div v-else class="text-sm whitespace-pre-wrap">
-                                {{ message.content }}
+                                {{ group.message.content }}
                             </div>
                             <div
                                 class="text-xs mt-1 opacity-70"
                                 :class="
-                                    message.role === 'user'
+                                    group.message.role === 'user'
                                         ? 'text-blue-100'
                                         : 'text-gray-500'
                                 "
                             >
-                                {{ formatTime(message.timestamp) }}
+                                {{ formatTime(group.message.timestamp) }}
                             </div>
 
                             <!-- 消息操作按钮 -->
@@ -1093,7 +1264,7 @@ onUnmounted(() => {
                                 v-if="!isLoading"
                                 class="absolute -bottom-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1"
                                 :class="
-                                    message.role === 'user'
+                                    group.message.role === 'user'
                                         ? 'left-0'
                                         : 'right-0'
                                 "
@@ -1101,8 +1272,8 @@ onUnmounted(() => {
                                 <!-- AI消息：重新生成按钮 -->
                                 <button
                                     v-if="
-                                        message.role === 'assistant' &&
-                                        index === messages.length - 1
+                                        group.message.role === 'assistant' &&
+                                        groupIndex === groupedMessages.length - 1
                                     "
                                     @click="regenerateResponse()"
                                     class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
@@ -1115,7 +1286,7 @@ onUnmounted(() => {
 
                                 <!-- 编辑按钮 -->
                                 <button
-                                    @click="editMessage(index)"
+                                    @click="editMessage(getMessageIndex(group.message))"
                                     class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
                                     title="编辑消息"
                                 >
@@ -1126,7 +1297,7 @@ onUnmounted(() => {
 
                                 <!-- 删除按钮 -->
                                 <button
-                                    @click="deleteMessage(index)"
+                                    @click="deleteMessage(getMessageIndex(group.message))"
                                     class="p-1 bg-gray-100 hover:bg-red-100 rounded-full transition-colors"
                                     title="删除消息"
                                 >
@@ -1137,24 +1308,24 @@ onUnmounted(() => {
                             </div>
 
                             <!-- 编辑模式的输入框 -->
-                            <div v-if="message.isEditing" class="mt-2">
+                            <div v-if="group.message.isEditing" class="mt-2">
                                 <textarea
                                     v-model="editingContent"
-                                    @keydown="handleEditKeydown(index, $event)"
-                                    @blur="saveEdit(index)"
+                                    @keydown="handleEditKeydown(getMessageIndex(group.message), $event)"
+                                    @blur="saveEdit(getMessageIndex(group.message))"
                                     class="w-full p-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     rows="3"
                                     placeholder="编辑消息内容..."
                                 ></textarea>
                                 <div class="flex gap-2 mt-2">
                                     <button
-                                        @click="saveEdit(index)"
+                                        @click="saveEdit(getMessageIndex(group.message))"
                                         class="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors"
                                     >
                                         保存
                                     </button>
                                     <button
-                                        @click="cancelEdit(index)"
+                                        @click="cancelEdit(getMessageIndex(group.message))"
                                         class="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 transition-colors"
                                     >
                                         取消

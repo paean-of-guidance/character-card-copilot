@@ -60,6 +60,70 @@ async fn update_character(app_handle: tauri::AppHandle, uuid: String, card: Tave
     CharacterStorage::update_character(&app_handle, &uuid, &card)
 }
 
+/// 更新角色的单个字段，保留其他所有数据（包括 character_book）
+#[tauri::command]
+async fn update_character_field(
+    app_handle: tauri::AppHandle,
+    uuid: String,
+    field_name: String,
+    field_value: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+
+    // 获取当前角色数据
+    let mut character_data = match CharacterStorage::get_character_by_uuid(&app_handle, &uuid)? {
+        Some(data) => data,
+        None => return Err(format!("角色 {} 不存在", uuid)),
+    };
+
+    // 更新指定字段
+    match field_name.as_str() {
+        "name" => character_data.card.data.name = field_value,
+        "description" => character_data.card.data.description = field_value,
+        "personality" => character_data.card.data.personality = field_value,
+        "scenario" => character_data.card.data.scenario = field_value,
+        "first_mes" => character_data.card.data.first_mes = field_value,
+        "mes_example" => character_data.card.data.mes_example = field_value,
+        "creator_notes" => character_data.card.data.creator_notes = field_value,
+        "system_prompt" => character_data.card.data.system_prompt = field_value,
+        "post_history_instructions" => character_data.card.data.post_history_instructions = field_value,
+        "alternate_greetings" => {
+            character_data.card.data.alternate_greetings = field_value
+                .split('\n')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        "tags" => {
+            character_data.card.data.tags = field_value
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        "creator" => character_data.card.data.creator = field_value,
+        "character_version" => character_data.card.data.character_version = field_value,
+        _ => return Err(format!("不支持的字段: {}", field_name)),
+    }
+
+    // 保存更新后的数据
+    CharacterStorage::update_character(&app_handle, &uuid, &character_data.card)?;
+
+    // 发送事件通知前端刷新
+    if let Err(e) = app_handle.emit(
+        "character-updated",
+        serde_json::json!({
+            "uuid": uuid,
+            "character_data": character_data,
+            "update_type": serde_json::json!({ "Fields": vec![field_name.clone()] })
+        }),
+    ) {
+        eprintln!("发送角色更新事件失败: {}", e);
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn delete_character(app_handle: tauri::AppHandle, uuid: String) -> Result<(), String> {
     CharacterStorage::delete_character(&app_handle, &uuid)
@@ -321,6 +385,7 @@ pub fn run() {
             get_character_by_uuid,
             create_character,
             update_character,
+            update_character_field,
             delete_character,
             upload_background_image,
             update_character_background_path,

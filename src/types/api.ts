@@ -192,6 +192,8 @@ export interface ChatCompletionResponse {
   system_fingerprint?: string;
   choices: ChatCompletionChoice[];
   usage: Usage;
+  /** 中间消息（包括 assistant with tool_calls 和 tool results） */
+  intermediate_messages?: ChatMessage[];
 }
 
 /**

@@ -4,12 +4,11 @@ import { useRoute, useRouter } from "vue-router";
 import { useAppStore } from "@/stores/app";
 import {
     getCharacterByUUID,
-    updateCharacter,
+    updateCharacterField,
     deleteCharacter as deleteCharacterByUUID,
     exportCharacterCard,
     importCharacterCardFromBytes,
 } from "@/services/characterStorage";
-import type { TavernCardV2 } from "@/types/character";
 import AIPanel from "@/components/AIPanel.vue";
 import WorldBookEditor from "@/components/WorldBookEditor.vue";
 import {
@@ -245,9 +244,6 @@ async function handleAvatarClick() {
                 uploadedPath,
             );
             console.log("头像上传成功:", uploadedPath);
-
-            // 触发一次自动保存，确保数据同步
-            await autoSave();
         } catch (error) {
             console.error("头像上传失败:", error);
             showErrorToast("头像上传失败，请重试", "上传失败");
@@ -329,42 +325,16 @@ async function loadCharacterData(uuid: string) {
     }
 }
 
-// 自动保存函数
-async function autoSave() {
+// 更新单个字段（安全保存，保留世界书等数据）
+async function updateField(fieldName: string, fieldValue: string) {
     if (!characterUUID.value) return;
 
     try {
-        const tavernCardV2: TavernCardV2 = {
-            spec: "chara_card_v2",
-            spec_version: "2.0",
-            data: {
-                name: characterData.value.name,
-                description: characterData.value.description,
-                personality: characterData.value.personality,
-                scenario: characterData.value.scenario,
-                first_mes: characterData.value.first_mes,
-                mes_example: characterData.value.mes_example,
-                creator_notes: characterData.value.creator_notes,
-                system_prompt: characterData.value.system_prompt,
-                post_history_instructions:
-                    characterData.value.post_history_instructions,
-                alternate_greetings: characterData.value.alternate_greetings
-                    .split("\n")
-                    .filter((g: string) => g.trim()),
-                tags: characterData.value.tags
-                    .split(",")
-                    .map((t: string) => t.trim())
-                    .filter((t: string) => t),
-                creator: characterData.value.creator,
-                character_version: characterData.value.character_version,
-                extensions: {},
-            },
-        };
-
-        await updateCharacter(characterUUID.value, tavernCardV2);
-        console.log("角色数据已自动保存");
+        await updateCharacterField(characterUUID.value, fieldName, fieldValue);
+        console.log(`字段 ${fieldName} 已保存`);
     } catch (error) {
-        console.error("自动保存失败:", error);
+        console.error(`更新字段 ${fieldName} 失败:`, error);
+        showErrorToast(`保存 ${fieldName} 失败`, "保存错误");
     }
 }
 
@@ -663,7 +633,7 @@ onUnmounted(async () => {
                                 >
                                 <input
                                     v-model="characterData.name"
-                                    @blur="autoSave"
+                                    @blur="updateField('name', characterData.name)"
                                     type="text"
                                     class="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 text-lg font-medium"
                                     placeholder="请输入角色名称"
@@ -771,7 +741,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.description"
-                                @blur="autoSave"
+                                @blur="updateField('description', characterData.description)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="5"
                                 placeholder="角色的物理外观、身份和基本设定"
@@ -791,7 +761,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.personality"
-                                @blur="autoSave"
+                                @blur="updateField('personality', characterData.personality)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="6"
                                 placeholder="描述角色的性格特征"
@@ -811,7 +781,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.scenario"
-                                @blur="autoSave"
+                                @blur="updateField('scenario', characterData.scenario)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="描述角色所处的场景和环境"
@@ -831,7 +801,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.first_mes"
-                                @blur="autoSave"
+                                @blur="updateField('first_mes', characterData.first_mes)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="角色的第一句话或开场问候"
@@ -851,7 +821,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.mes_example"
-                                @blur="autoSave"
+                                @blur="updateField('mes_example', characterData.mes_example)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="6"
                                 placeholder="示例对话格式，展示角色的说话风格"
@@ -871,7 +841,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.creator_notes"
-                                @blur="autoSave"
+                                @blur="updateField('creator_notes', characterData.creator_notes)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="创作时的备注和说明"
@@ -891,7 +861,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.system_prompt"
-                                @blur="autoSave"
+                                @blur="updateField('system_prompt', characterData.system_prompt)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="AI系统使用的提示词"
@@ -917,7 +887,7 @@ onUnmounted(async () => {
                                 v-model="
                                     characterData.post_history_instructions
                                 "
-                                @blur="autoSave"
+                                @blur="updateField('post_history_instructions', characterData.post_history_instructions)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="对话历史后的处理指令"
@@ -938,7 +908,7 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.alternate_greetings"
-                                @blur="autoSave"
+                                @blur="updateField('alternate_greetings', characterData.alternate_greetings)"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="备用开场白，用换行分隔多个问候语"
@@ -958,7 +928,7 @@ onUnmounted(async () => {
                             </div>
                             <input
                                 v-model="characterData.tags"
-                                @blur="autoSave"
+                                @blur="updateField('tags', characterData.tags)"
                                 type="text"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
                                 placeholder="角色标签，用逗号分隔"
@@ -972,7 +942,7 @@ onUnmounted(async () => {
                             >
                             <input
                                 v-model="characterData.creator"
-                                @blur="autoSave"
+                                @blur="updateField('creator', characterData.creator)"
                                 type="text"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
                                 placeholder="创作者名称"
@@ -986,7 +956,7 @@ onUnmounted(async () => {
                             >
                             <input
                                 v-model="characterData.character_version"
-                                @blur="autoSave"
+                                @blur="updateField('character_version', characterData.character_version)"
                                 type="text"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
                                 placeholder="角色卡版本号"

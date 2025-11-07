@@ -72,6 +72,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useWorldBookStore } from '@/stores/worldBook';
+import { useNotification } from '@/composables/useNotification';
+import { useModal } from '@/composables/useModal';
 import WorldBookSearch from './WorldBookSearch.vue';
 import WorldBookEntry from './WorldBookEntry.vue';
 import WorldBookEntryEditor from './WorldBookEntryEditor.vue';
@@ -86,6 +88,10 @@ const props = defineProps<Props>();
 
 // Store
 const worldBookStore = useWorldBookStore();
+
+// Notification & Modal
+const { showSuccessToast, showErrorToast } = useNotification();
+const { showAlertModal } = useModal();
 
 // 计算属性
 const showEditor = computed(() => {
@@ -170,11 +176,23 @@ function handleEdit(entryId: number | undefined): void {
 async function handleDelete(entryId: number | undefined): Promise<void> {
   if (entryId === undefined) return;
 
-  if (confirm('确定要删除这个条目吗？')) {
+  const confirmed = await showAlertModal(
+    '确定要删除这个条目吗？此操作不可撤销。',
+    undefined,
+    {
+      title: '删除确认',
+      type: 'danger',
+      confirmText: '确认删除',
+      cancelText: '取消'
+    }
+  );
+
+  if (confirmed) {
     try {
       await worldBookStore.deleteEntry(entryId);
+      showSuccessToast('条目已删除', '删除成功');
     } catch (error) {
-      alert('删除失败: ' + error);
+      showErrorToast('删除失败: ' + error, '删除失败');
     }
   }
 }
@@ -184,14 +202,14 @@ async function handleSave(data: CreateWorldBookEntryParams | UpdateWorldBookEntr
     if (worldBookStore.isCreatingNew) {
       // 创建新条目
       await worldBookStore.createEntry(data as CreateWorldBookEntryParams);
-      alert('条目创建成功！');
+      showSuccessToast('条目创建成功！', '创建成功');
     } else if (worldBookStore.selectedEntryId !== null) {
       // 更新现有条目
       await worldBookStore.updateEntry(worldBookStore.selectedEntryId, data);
-      alert('条目更新成功！');
+      showSuccessToast('条目更新成功！', '更新成功');
     }
   } catch (error) {
-    alert('保存失败: ' + error);
+    showErrorToast('保存失败: ' + error, '保存失败');
   }
 }
 
@@ -203,11 +221,24 @@ function handleCancel(): void {
 async function handleDeleteFromEditor(): Promise<void> {
   if (worldBookStore.selectedEntryId === null) return;
 
-  try {
-    await worldBookStore.deleteEntry(worldBookStore.selectedEntryId);
-    alert('条目删除成功！');
-  } catch (error) {
-    alert('删除失败: ' + error);
+  const confirmed = await showAlertModal(
+    '确定要删除这个条目吗？此操作不可撤销。',
+    undefined,
+    {
+      title: '删除确认',
+      type: 'danger',
+      confirmText: '确认删除',
+      cancelText: '取消'
+    }
+  );
+
+  if (confirmed) {
+    try {
+      await worldBookStore.deleteEntry(worldBookStore.selectedEntryId);
+      showSuccessToast('条目删除成功！', '删除成功');
+    } catch (error) {
+      showErrorToast('删除失败: ' + error, '删除失败');
+    }
   }
 }
 </script>

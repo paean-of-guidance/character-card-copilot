@@ -283,6 +283,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { useNotification } from '@/composables/useNotification';
+import { useModal } from '@/composables/useModal';
 import type { WorldBookEntry, CreateWorldBookEntryParams, UpdateWorldBookEntryParams } from '@/types/character';
 
 interface Props {
@@ -302,6 +304,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<Emits>();
+
+// Notification & Modal
+const { showWarningToast } = useNotification();
+const { showAlertModal } = useModal();
 
 // 表单数据的默认值
 const getDefaultFormData = () => ({
@@ -404,12 +410,12 @@ function removeSecondaryKey(index: number): void {
 function handleSave(): void {
   // 验证
   if (formData.value.keys.length === 0) {
-    alert('请至少添加一个关键词');
+    showWarningToast('请至少添加一个关键词', '验证失败');
     return;
   }
 
   if (!formData.value.content.trim()) {
-    alert('请输入内容');
+    showWarningToast('请输入内容', '验证失败');
     return;
   }
 
@@ -431,8 +437,19 @@ function handleCancel(): void {
   emit('cancel');
 }
 
-function handleDelete(): void {
-  if (confirm('确定要删除这个条目吗？')) {
+async function handleDelete(): Promise<void> {
+  const confirmed = await showAlertModal(
+    '确定要删除这个条目吗？此操作不可撤销。',
+    undefined,
+    {
+      title: '删除确认',
+      type: 'danger',
+      confirmText: '确认删除',
+      cancelText: '取消'
+    }
+  );
+
+  if (confirmed) {
     emit('delete');
   }
 }
