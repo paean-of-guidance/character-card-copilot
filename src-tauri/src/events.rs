@@ -1,6 +1,6 @@
-use crate::chat_history::ChatMessage;
-use crate::character_storage::CharacterData;
 use crate::character_session::{SessionInfo, TokenBudget};
+use crate::character_storage::CharacterData;
+use crate::chat_history::ChatMessage;
 use crate::context_builder::BuiltContextResult;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -373,7 +373,8 @@ macro_rules! emit_error {
             $error_code,
             $error_message,
             None,
-        ).unwrap_or_else(|e| eprintln!("发送错误事件失败: {}", e));
+        )
+        .unwrap_or_else(|e| eprintln!("发送错误事件失败: {}", e));
     };
     ($app:expr, $uuid:expr, $error_code:expr, $error_message:expr, $context:expr) => {
         $crate::events::EventEmitter::send_error(
@@ -382,7 +383,8 @@ macro_rules! emit_error {
             $error_code,
             $error_message,
             Some($context),
-        ).unwrap_or_else(|e| eprintln!("发送错误事件失败: {}", e));
+        )
+        .unwrap_or_else(|e| eprintln!("发送错误事件失败: {}", e));
     };
 }
 
@@ -398,7 +400,8 @@ macro_rules! emit_tool_success {
             Some($result),
             None,
             $time_ms,
-        ).unwrap_or_else(|e| eprintln!("发送工具执行事件失败: {}", e));
+        )
+        .unwrap_or_else(|e| eprintln!("发送工具执行事件失败: {}", e));
     };
 }
 
@@ -414,6 +417,7 @@ macro_rules! emit_tool_error {
             None,
             Some($error.to_string()),
             $time_ms,
-        ).unwrap_or_else(|e| eprintln!("发送工具执行事件失败: {}", e));
+        )
+        .unwrap_or_else(|e| eprintln!("发送工具执行事件失败: {}", e));
     };
 }

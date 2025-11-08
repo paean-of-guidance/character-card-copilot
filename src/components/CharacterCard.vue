@@ -40,7 +40,7 @@ onMounted(() => {
 
 <template>
     <div
-        class="character-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-transform hover:scale-105"
+        class="character-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-transform hover:scale-105 hover:shadow-2xl"
         @click="handleClick"
     >
         <div class="aspect-square relative bg-gray-200">

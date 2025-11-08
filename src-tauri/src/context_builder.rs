@@ -472,11 +472,6 @@ pub fn create_default_context_builder() -> ContextBuilder {
     ContextBuilder::new(ContextBuilderOptions::default())
 }
 
-/// 创建自定义配置的上下文构建器
-pub fn create_context_builder(options: ContextBuilderOptions) -> ContextBuilder {
-    ContextBuilder::new(options)
-}
-
 // ====================== Tauri命令 ======================
 
 /// 构建上下文（用于测试）

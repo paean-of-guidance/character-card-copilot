@@ -14,7 +14,8 @@ import {
 } from "@/services/apiConfig";
 
 const appStore = useAppStore();
-const { showSuccessToast, showErrorToast, showWarningToast } = useNotification();
+const { showSuccessToast, showErrorToast, showWarningToast } =
+    useNotification();
 const selectedApi = ref<ApiConfig | null>(null);
 const editingApi = ref<ApiConfig | null>(null);
 const lastTestResult = ref<ApiTestResult | null>(null);
@@ -196,8 +197,8 @@ async function handleTestConnection() {
 </script>
 
 <template>
-    <div class="bg-gray-50">
-        <div class="max-w-7xl mx-auto">
+    <div class="bg-gray-50 w-full flex justify-center">
+        <div class="w-full mx-auto flex justify-center">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <!-- 左侧：API列表 -->
                 <div class="lg:col-span-1">
@@ -353,15 +354,24 @@ async function handleTestConnection() {
 
                                     <!-- 设为默认按钮 -->
                                     <button
-                                        v-if="!selectedApi.default && selectedApi.enabled"
+                                        v-if="
+                                            !selectedApi.default &&
+                                            selectedApi.enabled
+                                        "
                                         class="font-bold py-1.5 px-4 rounded-full text-sm transition-all"
                                         :class="{
-                                            'bg-blue-500 hover:bg-blue-600 text-white': !defaultSetSuccess,
-                                            'bg-green-500 text-white': defaultSetSuccess
+                                            'bg-blue-500 hover:bg-blue-600 text-white':
+                                                !defaultSetSuccess,
+                                            'bg-green-500 text-white':
+                                                defaultSetSuccess,
                                         }"
                                         @click="handleSetDefault"
                                     >
-                                        {{ defaultSetSuccess ? '✓ 已设为默认' : '设为默认' }}
+                                        {{
+                                            defaultSetSuccess
+                                                ? "✓ 已设为默认"
+                                                : "设为默认"
+                                        }}
                                     </button>
                                 </div>
                             </div>
@@ -402,4 +412,3 @@ async function handleTestConnection() {
 </template>
 
 <style scoped></style>
-
