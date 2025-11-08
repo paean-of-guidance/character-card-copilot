@@ -46,13 +46,13 @@ impl ChatHistoryManager {
             .app_data_dir()
             .map_err(|e| format!("获取应用数据目录失败: {}", e))?;
 
-        let character_dir = app_dir.join("characters").join(&self.character_id);
+        let character_dir = app_dir.join("character-cards").join(&self.character_id);
 
         // 确保目录存在
         fs::create_dir_all(&character_dir)
             .map_err(|e| format!("创建角色目录失败: {}", e))?;
 
-        Ok(character_dir.join("chatHistory.jsonl"))
+        Ok(character_dir.join("chat_history.jsonl"))
     }
 
     pub fn save_message(&self, message: &ChatMessage) -> Result<(), String> {

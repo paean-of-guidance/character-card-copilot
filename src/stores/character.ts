@@ -263,6 +263,27 @@ export const useCharacterStore = defineStore('character', () => {
     lastFetch.value = 0
   }
 
+  /**
+   * 从后端事件更新角色数据（不触发重新加载，只更新缓存）
+   */
+  function updateCharacterFromBackend(uuid: string, characterData: CharacterData) {
+    // 安全检查：确保数据有效
+    if (!characterData || !characterData.uuid) {
+      console.warn('updateCharacterFromBackend: 接收到无效的角色数据', { uuid, characterData })
+      return
+    }
+
+    const index = characters.value.findIndex(c => c && c.uuid === uuid)
+    if (index >= 0) {
+      // 更新现有缓存
+      characters.value[index] = characterData
+    } else {
+      // 添加到缓存
+      characters.value.push(characterData)
+    }
+    lastFetch.value = Date.now()
+  }
+
   return {
     // 状态
     characters,
@@ -299,5 +320,8 @@ export const useCharacterStore = defineStore('character', () => {
     // 缓存管理
     clearCache,
     reset,
+
+    // 后端事件更新
+    updateCharacterFromBackend,
   }
 })

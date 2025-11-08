@@ -2,8 +2,8 @@
 import { onMounted, ref, watch, nextTick, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAppStore } from "@/stores/app";
+import { useCharacterStore } from "@/stores/character";
 import {
-    getCharacterByUUID,
     updateCharacterField,
     deleteCharacter as deleteCharacterByUUID,
     exportCharacterCard,
@@ -29,6 +29,7 @@ import type {
 } from "@/types/events";
 
 const appStore = useAppStore();
+const characterStore = useCharacterStore();
 const route = useRoute();
 const router = useRouter();
 const { showSuccessToast, showErrorToast, showWarningToast } =
@@ -84,6 +85,9 @@ async function initializeBackendEventListeners() {
             console.log("Editor: 🎭 角色加载事件:", event.payload);
             const payload = event.payload;
 
+            // ✅ 更新 Store 缓存（不会闪烁）
+            characterStore.updateCharacterFromBackend(payload.uuid, payload.character_data);
+
             // 如果是当前编辑的角色，更新本地数据
             if (payload.uuid === characterUUID.value) {
                 console.log("Editor: 更新角色数据到编辑器");
@@ -98,6 +102,9 @@ async function initializeBackendEventListeners() {
         async (event) => {
             console.log("Editor: 🔄 角色更新事件:", event.payload);
             const payload = event.payload;
+
+            // ✅ 更新 Store 缓存（工具调用修改后会触发此事件）
+            characterStore.updateCharacterFromBackend(payload.uuid, payload.character_data);
 
             // 如果是当前编辑的角色，更新本地数据
             if (payload.uuid === characterUUID.value) {
@@ -188,13 +195,13 @@ function cleanupEventListeners() {
 /**
  * 从CharacterData更新编辑器表单数据
  */
-async function updateEditorFromCharacterData(characterData: any) {
+async function updateEditorFromCharacterData(incomingCharacterData: any) {
     try {
         // 保存完整的角色对象
-        fullCharacterData.value = characterData;
+        fullCharacterData.value = incomingCharacterData;
 
         // 更新表单数据
-        const cardData = characterData.card.data;
+        const cardData = incomingCharacterData.card.data;
         characterData.value = {
             name: cardData.name || "",
             description: cardData.description || "",
@@ -212,7 +219,7 @@ async function updateEditorFromCharacterData(characterData: any) {
         };
 
         // 更新背景路径
-        backgroundPath.value = characterData.backgroundPath || "";
+        backgroundPath.value = incomingCharacterData.backgroundPath || "";
 
         console.log("Editor: 角色数据已同步到编辑器");
     } catch (error) {
@@ -291,7 +298,8 @@ async function loadCharacterData(uuid: string) {
 
     isLoading.value = true;
     try {
-        const character = await getCharacterByUUID(uuid);
+        // ✅ 使用 Store 加载（带缓存）
+        const character = await characterStore.getCharacterByUUID(uuid);
         if (character) {
             characterUUID.value = uuid;
             backgroundPath.value = character.backgroundPath || "";
@@ -395,21 +403,7 @@ onMounted(async () => {
         await CharacterStateService.setActiveCharacter(uuid);
     }
 
-    // 保留原有的角色更新事件监听器（作为备用）
-    await listen("character-updated", (event) => {
-        console.log("Editor: 收到原有角色更新事件:", event.payload);
-        // 检查事件是否针对当前角色
-        if (
-            event.payload &&
-            typeof event.payload === "object" &&
-            "character_uuid" in event.payload &&
-            event.payload.character_uuid === characterUUID.value
-        ) {
-            console.log("Editor: 刷新当前角色数据（原有事件）");
-            // 重新加载角色数据
-            loadCharacterData(characterUUID.value);
-        }
-    });
+    // ✅ 已移除旧的事件监听器，使用 initializeBackendEventListeners 中的标准监听器
 });
 
 // 组件卸载时清理事件监听器

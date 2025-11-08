@@ -154,13 +154,34 @@ impl AIToolTrait for EditCharacterTool {
         // 保存更新后的角色数据
         match CharacterStorage::update_character(app_handle, &character_uuid, &tavern_card) {
             Ok(()) => {
-                // 发送事件通知前端刷新角色数据
-                if let Err(e) = app_handle.emit(
-                    "character-updated",
-                    serde_json::json!({
-                        "character_uuid": character_uuid,
-                        "updated_fields": updated_fields.iter().map(|(k, _)| k).collect::<Vec<_>>()
-                    }),
+                // 重新加载完整的角色数据
+                let updated_character_data =
+                    match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                        Ok(Some(data)) => data,
+                        Ok(None) => {
+                            return ToolResult {
+                                success: false,
+                                data: None,
+                                error: Some(format!("重新加载角色数据失败：角色不存在")),
+                                execution_time_ms: start_time.elapsed().as_millis() as u64,
+                            };
+                        }
+                        Err(e) => {
+                            return ToolResult {
+                                success: false,
+                                data: None,
+                                error: Some(format!("重新加载角色数据失败: {}", e)),
+                                execution_time_ms: start_time.elapsed().as_millis() as u64,
+                            };
+                        }
+                    };
+
+                // ✅ 使用标准事件发送方法（包含完整的 character_data）
+                if let Err(e) = crate::events::EventEmitter::send_character_updated(
+                    app_handle,
+                    &character_uuid,
+                    &updated_character_data,
+                    crate::events::CharacterUpdateType::BasicInfo,
                 ) {
                     eprintln!("发送角色更新事件失败: {}", e);
                 }

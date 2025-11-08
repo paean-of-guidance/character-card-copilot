@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useAppStore } from "@/stores/app";
@@ -14,8 +14,13 @@ const appStore = useAppStore();
 const characterStore = useCharacterStore();
 const router = useRouter();
 const route = useRoute();
-const { loading, characters } = storeToRefs(characterStore);
+const { loading } = storeToRefs(characterStore);
 const { showSuccessToast, showErrorToast } = useNotification();
+
+// 过滤掉无效的角色数据（安全防护）
+const characters = computed(() => {
+    return characterStore.characters.filter(c => c && c.uuid);
+});
 
 onMounted(async () => {
     appStore.setPageTitle("首页", false);
