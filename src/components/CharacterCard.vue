@@ -43,7 +43,7 @@ onMounted(() => {
         class="character-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-transform hover:scale-105"
         @click="handleClick"
     >
-        <div class="aspect-3/4 relative bg-gray-200">
+        <div class="aspect-square relative bg-gray-200">
             <img
                 v-if="character.backgroundPath"
                 :src="
@@ -71,6 +71,9 @@ onMounted(() => {
             </h3>
             <p class="text-sm text-gray-600 mt-1 line-clamp-2">
                 {{ character.card.data.description || "暂无描述" }}
+            </p>
+            <p class="text-xs text-gray-500 mt-1 line-clamp-2">
+                {{ character.card.data.character_version || "暂无版本" }}
             </p>
         </div>
     </div>

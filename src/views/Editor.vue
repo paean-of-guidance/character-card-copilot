@@ -7,7 +7,6 @@ import {
     updateCharacterField,
     deleteCharacter as deleteCharacterByUUID,
     exportCharacterCard,
-    importCharacterCardFromBytes,
 } from "@/services/characterStorage";
 import AIPanel from "@/components/AIPanel.vue";
 import WorldBookEditor from "@/components/WorldBookEditor.vue";
@@ -15,8 +14,7 @@ import {
     uploadBackgroundImage,
     updateCharacterBackgroundPath,
 } from "@/services/characterStorage";
-import { save, open } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { save } from "@tauri-apps/plugin-dialog";
 import { CharacterStateService } from "@/services/characterState";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -511,49 +509,6 @@ async function exportCharacter() {
     }
 }
 
-// 导入角色功能
-async function importCharacter() {
-    try {
-        // 打开文件选择对话框
-        const selected = await open({
-            multiple: false,
-            filters: [
-                {
-                    name: "角色卡文件",
-                    extensions: ["png", "json", "card"],
-                },
-            ],
-        });
-
-        if (!selected || typeof selected !== "string") {
-            // 用户取消了选择
-            return;
-        }
-
-        isLoading.value = true;
-
-        // 使用 Tauri fs 插件读取文件内容
-        const fileData = await readFile(selected);
-        const fileName = selected.split(/[\\/]/).pop() || "character.png";
-
-        // 调用导入API
-        const importedCharacter = await importCharacterCardFromBytes(
-            fileData,
-            fileName,
-        );
-
-        showSuccessToast("角色导入成功", "导入完成");
-
-        // 跳转到导入的角色编辑页面
-        router.push(`/editor/${importedCharacter.uuid}`);
-    } catch (error) {
-        console.error("导入角色失败:", error);
-        showErrorToast("导入角色失败，请检查文件格式", "导入失败");
-    } finally {
-        isLoading.value = false;
-    }
-}
-
 // 组件卸载时清除活跃角色状态
 onUnmounted(async () => {
     await CharacterStateService.clearActiveCharacter();
@@ -681,25 +636,6 @@ onUnmounted(async () => {
                                 />
                             </svg>
                             导出角色
-                        </button>
-                        <button
-                            @click="importCharacter"
-                            class="bg-green-500 hover:bg-green-700 text-white text-sm font-medium py-1.5 px-3 rounded-full flex items-center gap-1.5"
-                        >
-                            <svg
-                                class="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                                />
-                            </svg>
-                            导入角色
                         </button>
                         <button
                             @click="toggleEditorMode"
