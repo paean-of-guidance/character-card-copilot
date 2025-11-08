@@ -97,6 +97,22 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
+   * 继续对话（当最后一条是用户消息时生成AI回复）
+   * 封装 invoke('continue_chat')
+   */
+  async function continueChat() {
+    try {
+      isLoading.value = true
+      await invoke('continue_chat')
+    } catch (error) {
+      console.error('继续对话失败:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 加载聊天历史
    * 封装 invoke('load_chat_history')
    */
@@ -205,6 +221,7 @@ export const useAiStore = defineStore('ai', () => {
     editChatMessage,
     deleteChatMessage,
     regenerateLastMessage,
+    continueChat,
     loadChatHistory,
 
     // 工具和命令管理

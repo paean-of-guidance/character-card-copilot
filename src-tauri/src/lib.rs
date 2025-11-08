@@ -33,6 +33,7 @@ use character_session::{
     delete_chat_message,
     edit_chat_message,
     regenerate_last_message,
+    continue_chat,
 };
 use context_builder::build_context;
 use token_counter::{get_token_counter, TokenCountResult};
@@ -453,6 +454,7 @@ pub fn run() {
             delete_chat_message,
             edit_chat_message,
             regenerate_last_message,
+            continue_chat,
             // 上下文构建命令
             build_context,
             // Token 计数命令

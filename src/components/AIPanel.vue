@@ -4,6 +4,7 @@ import {
     MdOutlineRefresh,
     MdOutlineEdit,
     MdOutlineDelete,
+    MdSend,
 } from "vue-icons-plus/md";
 import { getAllApiConfigs } from "@/services/apiConfig";
 import type { ApiConfig, ChatMessage } from "@/types/api";
@@ -744,6 +745,36 @@ function getMessageIndex(message: DisplayMessage): number {
     return messages.value.findIndex(m => m.id === message.id);
 }
 
+// 删除工具调用组（从 ToolExecutionCard 触发）
+async function deleteToolExecutionGroup(groupIndex: number) {
+    const group = groupedMessages.value[groupIndex];
+
+    if (!group || group.type !== 'tool-execution') {
+        console.error(`❌ 组 ${groupIndex} 不是有效的工具调用组`);
+        return;
+    }
+
+    // 通过时间戳找到工具调用链的起始消息（带 tool_calls 的 assistant）
+    // 注意：timestamp 是从带 tool_calls 的 assistant 消息继承的
+    const targetTimestamp = group.timestamp;
+
+    // 在原始消息数组中找到对应的 assistant 消息
+    const startIndex = messages.value.findIndex(
+        msg => msg.role === 'assistant' &&
+               msg.tool_calls &&
+               msg.tool_calls.length > 0 &&
+               msg.timestamp.getTime() === targetTimestamp.getTime()
+    );
+
+    if (startIndex === -1) {
+        console.error(`❌ 未找到工具调用组 ${groupIndex} 的起始消息`);
+        return;
+    }
+
+    console.log(`🎯 删除工具调用组 [${groupIndex}]，起始消息索引: ${startIndex}`);
+    await deleteMessage(startIndex);
+}
+
 // 编辑消息
 function editMessage(index: number) {
     if (index >= 0 && index < messages.value.length) {
@@ -809,18 +840,73 @@ function handleEditKeydown(index: number, event: KeyboardEvent) {
 
 // 删除消息
 async function deleteMessage(index: number) {
-    if (index >= 0 && index < messages.value.length) {
-        try {
-            // 调用后端删除消息
-            await aiStore.deleteChatMessage(index);
+    if (index < 0 || index >= messages.value.length) {
+        return;
+    }
 
-            // 前端也删除（后端会通过事件同步，但为了即时响应先删除）
-            messages.value.splice(index, 1);
+    try {
+        const msg = messages.value[index];
 
-            console.log(`✅ 已删除消息 [${index}]`);
-        } catch (error) {
-            console.error("删除消息失败:", error);
+        // 检测是否需要删除完整的工具调用链
+        let deleteStartIndex = index;
+        let deleteEndIndex = index;
+
+        // 情况1: 删除的是普通 assistant（可能是工具调用后的最终回复）
+        if (msg.role === 'assistant' && (!msg.tool_calls || msg.tool_calls.length === 0)) {
+            // 向前查找：是否有 tool 消息
+            let hasToolMessages = false;
+            let toolStartIndex = index - 1;
+
+            // 跳过前面的 tool 消息
+            while (toolStartIndex >= 0 && messages.value[toolStartIndex].role === 'tool') {
+                hasToolMessages = true;
+                toolStartIndex--;
+            }
+
+            // 如果找到了 tool 消息，再检查前面是否有带 tool_calls 的 assistant
+            if (hasToolMessages && toolStartIndex >= 0) {
+                const prevMsg = messages.value[toolStartIndex];
+                if (prevMsg.role === 'assistant' && prevMsg.tool_calls && prevMsg.tool_calls.length > 0) {
+                    // 找到完整的工具调用链，删除整个链条
+                    deleteStartIndex = toolStartIndex;
+                    console.log(`🔗 检测到工具调用链: [${deleteStartIndex}] 到 [${deleteEndIndex}]`);
+                }
+            }
         }
+
+        // 情况2: 删除的是带 tool_calls 的 assistant（工具调用起点）
+        if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+            // 向后查找所有关联的 tool 消息
+            let j = index + 1;
+            while (j < messages.value.length && messages.value[j].role === 'tool') {
+                j++;
+            }
+
+            // 检查 tool 消息后面是否还有 assistant 回复（工具调用的最终回复）
+            if (j < messages.value.length && messages.value[j].role === 'assistant') {
+                deleteEndIndex = j;
+                console.log(`🔗 检测到工具调用链: [${deleteStartIndex}] 到 [${deleteEndIndex}]`);
+            } else {
+                deleteEndIndex = j - 1;
+            }
+        }
+
+        // 计算要删除的消息数量
+        const deleteCount = deleteEndIndex - deleteStartIndex + 1;
+
+        console.log(`🗑️ 删除消息: 从 [${deleteStartIndex}] 到 [${deleteEndIndex}]，共 ${deleteCount} 条`);
+
+        // 依次调用后端删除（从后往前删，避免索引变化）
+        for (let i = deleteEndIndex; i >= deleteStartIndex; i--) {
+            await aiStore.deleteChatMessage(i);
+        }
+
+        // 前端也删除（后端会通过事件同步，但为了即时响应先删除）
+        messages.value.splice(deleteStartIndex, deleteCount);
+
+        console.log(`✅ 已删除 ${deleteCount} 条消息`);
+    } catch (error) {
+        console.error("删除消息失败:", error);
     }
 }
 
@@ -848,6 +934,20 @@ async function regenerateResponse() {
         }
     } else {
         console.warn("最后一条消息不是AI回复，无法重新生成");
+    }
+}
+
+// 继续生成回复（当最后一条是用户消息时）
+async function continueFromUserMessage() {
+    try {
+        console.log("🔄 触发AI生成回复...");
+
+        // 调用新的 continueChat API（专门用于基于最后一条用户消息生成AI回复）
+        await aiStore.continueChat();
+
+        console.log("✅ AI回复生成完成");
+    } catch (error) {
+        console.error("生成AI回复失败:", error);
     }
 }
 
@@ -1193,6 +1293,7 @@ onUnmounted(() => {
                             :tool-calls="group.toolCalls"
                             :tool-results="group.toolResults"
                             :timestamp="group.timestamp"
+                            @delete="deleteToolExecutionGroup(groupIndex)"
                         />
 
                         <!-- 普通消息 -->
@@ -1234,6 +1335,21 @@ onUnmounted(() => {
                                         : 'right-0'
                                 "
                             >
+                                <!-- 用户消息：生成AI回复按钮（仅最后一条显示） -->
+                                <button
+                                    v-if="
+                                        group.message.role === 'user' &&
+                                        groupIndex === groupedMessages.length - 1
+                                    "
+                                    @click="continueFromUserMessage()"
+                                    class="p-1 bg-blue-100 hover:bg-blue-200 rounded-full transition-colors"
+                                    title="生成AI回复"
+                                >
+                                    <MdSend
+                                        class="w-4 h-4 text-blue-600"
+                                    />
+                                </button>
+
                                 <!-- AI消息：重新生成按钮 -->
                                 <button
                                     v-if="

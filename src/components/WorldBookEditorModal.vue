@@ -24,9 +24,9 @@ const formData = ref({
   secondary_keys: [] as string[],
   constant: false,
   enabled: true,
-  insert_relative: 'before' as 'before' | 'after',
-  position: 0,
-  probability: 1,
+  position: 'before_char' as 'before_char' | 'after_char',
+  priority: 0,
+  insertion_order: 0,
 });
 
 // 新关键词输入
@@ -49,9 +49,9 @@ watch(
         secondary_keys: newEntry.secondary_keys || [],
         constant: newEntry.constant || false,
         enabled: newEntry.enabled !== false,
-        insert_relative: newEntry.insert_relative || 'before',
-        position: newEntry.position || 0,
-        probability: newEntry.probability || 1,
+        position: newEntry.position || 'before_char',
+        priority: newEntry.priority || 0,
+        insertion_order: newEntry.insertion_order || 0,
       };
       showAdvanced.value = false;
     }
@@ -275,34 +275,18 @@ function handleClose() {
                   </div>
                 </div>
 
-                <!-- 插入相对位置 -->
+                <!-- 插入位置 -->
                 <div>
                   <label class="text-sm font-semibold text-gray-700 mb-2 block">
-                    插入相对位置
+                    插入位置
                   </label>
                   <select
-                    v-model="formData.insert_relative"
+                    v-model="formData.position"
                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="before">在关键词之前插入</option>
-                    <option value="after">在关键词之后插入</option>
+                    <option value="before_char">角色定义之前</option>
+                    <option value="after_char">角色定义之后</option>
                   </select>
-                </div>
-
-                <!-- 触发概率 -->
-                <div>
-                  <label class="text-sm font-semibold text-gray-700 mb-2 block">
-                    触发概率 (0-1)
-                    <span class="text-xs font-normal text-gray-500 ml-1">1为100%触发</span>
-                  </label>
-                  <input
-                    v-model.number="formData.probability"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
 
                 <!-- 常驻条目 -->

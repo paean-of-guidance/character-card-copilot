@@ -1,8 +1,23 @@
 <template>
     <!-- 整体气泡容器 -->
     <div
-        class="max-w-[80%] px-4 py-3 rounded-lg bg-yellow-50 border border-yellow-200 text-gray-800 rounded-bl-sm space-y-2"
+        class="max-w-[80%] px-4 py-3 rounded-lg bg-yellow-50 border border-yellow-200 text-gray-800 rounded-bl-sm space-y-2 group relative"
     >
+        <!-- 悬浮操作按钮 -->
+        <div
+            class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+            <button
+                @click="emit('delete')"
+                class="p-1 bg-gray-100 hover:bg-red-100 rounded-full transition-colors"
+                title="删除工具调用"
+            >
+                <MdOutlineDelete
+                    class="w-4 h-4 text-gray-600 hover:text-red-600"
+                />
+            </button>
+        </div>
+
         <!-- 工具调用部分 -->
         <div
             v-for="(toolCall, index) in toolCalls"
@@ -154,6 +169,7 @@ import {
     MdExpandMore,
     MdCheckCircle,
     MdError,
+    MdOutlineDelete,
 } from "vue-icons-plus/md";
 import type { ToolCall, ChatMessage } from "@/types/api";
 
@@ -184,6 +200,12 @@ withDefaults(defineProps<Props>(), {
     toolCalls: () => [],
     toolResults: () => [],
 });
+
+/** 组件事件 */
+const emit = defineEmits<{
+    /** 删除工具调用 */
+    delete: [];
+}>();
 
 // ==================== 状态管理 ====================
 

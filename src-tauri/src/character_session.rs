@@ -542,23 +542,17 @@ pub async fn load_character_session(
     Ok(session.get_session_info())
 }
 
-/// 发送聊天消息
-#[tauri::command]
-pub async fn send_chat_message(
-    app_handle: tauri::AppHandle,
-    message: String,
+/// 内部函数：生成AI回复（公共逻辑）
+///
+/// 参数：
+/// - app_handle: Tauri应用句柄
+/// - session: 可变的角色会话引用
+/// - operation_type: 操作类型（用于日志和进度事件），如 "chat", "regenerate", "continue"
+async fn generate_ai_response(
+    app_handle: &tauri::AppHandle,
+    session: &mut CharacterSession,
+    operation_type: &str,
 ) -> Result<(), String> {
-    // 获取当前活跃角色会话
-    let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
-
-    let mut session = SESSION_MANAGER.get_or_create_session(&app_handle, uuid.clone())?;
-
-    // 添加用户消息
-    let user_message = session.add_user_message(message);
-
-    // 发送用户消息事件
-    EventEmitter::send_message_sent(&app_handle, &session.uuid, &user_message)?;
-
     // 使用上下文构建器构建完整上下文
     let context_builder = crate::context_builder::create_default_context_builder();
     let context_result = context_builder
@@ -808,23 +802,44 @@ pub async fn send_chat_message(
 
     // 发送整体完成进度
     EventEmitter::send_progress(
-        &app_handle,
+        app_handle,
         &session.uuid,
-        "ai_response",
+        operation_type,
         1.0,
-        Some("AI响应完成"),
+        Some(&format!("{}操作完成", operation_type)),
     )?;
 
     // 保存历史记录
     session
-        .save_history(&app_handle)
+        .save_history(app_handle)
         .await
         .map_err(|e| format!("保存历史记录失败: {}", e))?;
 
     // 更新会话状态
-    SESSION_MANAGER.update_session(session)?;
+    SESSION_MANAGER.update_session(session.clone())?;
 
     Ok(())
+}
+
+/// 发送聊天消息
+#[tauri::command]
+pub async fn send_chat_message(
+    app_handle: tauri::AppHandle,
+    message: String,
+) -> Result<(), String> {
+    // 获取当前活跃角色会话
+    let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
+
+    let mut session = SESSION_MANAGER.get_or_create_session(&app_handle, uuid.clone())?;
+
+    // 添加用户消息
+    let user_message = session.add_user_message(message);
+
+    // 发送用户消息事件
+    EventEmitter::send_message_sent(&app_handle, &session.uuid, &user_message)?;
+
+    // 调用公共的AI生成逻辑
+    generate_ai_response(&app_handle, &mut session, "chat").await
 }
 
 /// 卸载角色会话
@@ -1008,179 +1023,36 @@ pub async fn regenerate_last_message(app_handle: tauri::AppHandle) -> Result<(),
         return Err("倒数第二条消息不是用户消息，无法重新生成".to_string());
     }
 
-    let user_message_content = user_message.content.clone();
+    println!("重新生成消息，基于用户消息: {:?}", user_message.content);
 
     // 更新会话（删除消息后）
     SESSION_MANAGER.update_session(session.clone())?;
 
-    println!("重新生成消息，基于用户消息: {:?}", user_message_content);
+    // 调用公共的AI生成逻辑
+    generate_ai_response(&app_handle, &mut session, "regenerate").await
+}
 
-    // 使用上下文构建器构建完整上下文
-    let context_builder = crate::context_builder::create_default_context_builder();
-    let context_result = context_builder
-        .build_full_context(
-            &session.character_data,
-            &session.chat_history,
-            None, // 用户消息已在历史记录中
-        )
-        .map_err(|e| format!("构建上下文失败: {}", e))?;
+/// 继续对话（当最后一条是用户消息时生成AI回复）
+#[tauri::command]
+pub async fn continue_chat(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // 获取当前活跃角色会话
+    let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-    // 发送上下文构建完成事件
-    EventEmitter::send_context_built(&app_handle, &session.uuid, &context_result)?;
-
-    // ==================== 按照标准顺序构建消息 ====================
-    // 1️⃣ System / Role Prompt （定义模型身份、语气、核心目标）
-    // 2️⃣ Task / Objective      （本次会话目标、任务说明）
-    // 3️⃣ Character_Information （角色卡：背景、性格、偏好、知识、记忆）
-    // 4️⃣ History               （过去的 user / assistant 对话）
-    // 5️⃣ User Reply            （当前用户输入）
-    // 注：Tools 通过 request.tools 参数传递，不放在消息中
-    let mut ai_chat_messages = Vec::new();
-
-    // 1️⃣ System / Role Prompt + 2️⃣ Task / Objective
-    for msg in context_result.system_messages {
-        ai_chat_messages.push(AIChatMessage {
-            role: crate::ai_chat::MessageRole::System,
-            content: msg.content,
-            name: msg.name,
-            tool_calls: None,
-            tool_call_id: None,
-        });
-    }
-
-    // 3️⃣ Character_Information（角色信息 + 世界书）
-    // 使用 System 角色而非 Assistant，避免破坏对话时间线
-    for msg in context_result.assistant_messages {
-        ai_chat_messages.push(AIChatMessage {
-            role: crate::ai_chat::MessageRole::System,
-            content: msg.content,
-            name: msg.name,
-            tool_calls: None,
-            tool_call_id: None,
-        });
-    }
-
-    // 4️⃣ History（历史对话）
-    ai_chat_messages.extend(context_result.history_messages.iter().map(|msg| {
-        let role = match msg.role.as_str() {
-            "user" => crate::ai_chat::MessageRole::User,
-            "assistant" => crate::ai_chat::MessageRole::Assistant,
-            "system" => crate::ai_chat::MessageRole::System,
-            "tool" => crate::ai_chat::MessageRole::Tool,
-            _ => crate::ai_chat::MessageRole::User,
-        };
-
-        AIChatMessage {
-            role,
-            content: msg.content.clone(),
-            name: msg.name.clone(),
-            tool_calls: None,
-            tool_call_id: msg.tool_call_id.clone(),
-        }
-    }));
-
-    // 获取默认API配置
-    use crate::api_config::ApiConfigService;
-    let api_config =
-        ApiConfigService::get_default_api_config(&app_handle)?.ok_or("没有可用的API配置")?;
-
-    let message_count = ai_chat_messages.len();
-
-    // 获取可用工具定义
-    let chat_tools = ToolRegistry::get_available_tools_global();
-
-    // 构建聊天完成请求
-    let request = crate::ai_chat::ChatCompletionRequest {
-        model: api_config.model.clone(),
-        messages: ai_chat_messages,
-        temperature: Some(0.7),
-        max_tokens: Some(2048),
-        top_p: None,
-        frequency_penalty: None,
-        presence_penalty: None,
-        stop: None,
-        stream: Some(false),
-        tools: Some(chat_tools), // ✅ 添加工具定义
-        tool_choice: Some(crate::ai_chat::ToolChoice::String("auto".to_string())), // ✅ 让AI自动决定
-    };
-
-    // 调用真实的AI服务
-    let start_time = std::time::Instant::now();
-
-    println!("重新生成：发送AI请求到模型: {}", api_config.model);
-    println!("消息数量: {}", message_count);
-
-    // 调用 AIChatService 进行真实的AI API调用
-    use crate::ai_chat::AIChatService;
-    let ai_response_result =
-        AIChatService::create_chat_completion(&api_config, &request, Some(&app_handle))
-            .await
-            .map_err(|e| format!("AI API调用失败: {}", e))?;
-
-    let _execution_time = start_time.elapsed().as_millis() as u64;
-
-    // 提取AI响应内容
-    let ai_content = ai_response_result
-        .choices
-        .first()
-        .map(|choice| choice.message.content.clone())
-        .unwrap_or_else(|| "AI未返回响应".to_string());
-
-    // 提取工具调用（如果有）
-    let tool_calls_data = ai_response_result
-        .choices
-        .first()
-        .and_then(|choice| choice.message.tool_calls.clone());
-
-    // 转换工具调用格式
-    let converted_tool_calls = tool_calls_data.as_ref().map(|calls| {
-        calls
-            .iter()
-            .map(|call| crate::chat_history::ToolCall {
-                id: call.id.clone(),
-                r#type: call.call_type.clone(),
-                function: crate::chat_history::ToolFunction {
-                    name: call.function.name.clone(),
-                    arguments: call.function.arguments.clone(),
-                },
-            })
-            .collect::<Vec<_>>()
-    });
-
-    // 重新获取会话（因为可能在AI调用期间被修改）
     let mut session = SESSION_MANAGER.get_or_create_session(&app_handle, uuid.clone())?;
 
-    // 添加AI响应到历史记录
-    let ai_response = session.add_assistant_message(ai_content.clone(), converted_tool_calls);
+    // 检查历史记录是否为空
+    if session.chat_history.is_empty() {
+        return Err("聊天历史为空，无法继续对话".to_string());
+    }
 
-    // 发送 AI 响应事件（regenerate 场景不会有 intermediate_messages）
-    EventEmitter::send_message_received(&app_handle, &session.uuid, &ai_response, None)?;
+    // 检查最后一条消息是否是用户消息
+    let last_message = session.chat_history.last().ok_or("聊天历史为空")?;
+    if last_message.role != "user" {
+        return Err("最后一条消息不是用户消息，无法继续对话".to_string());
+    }
 
-    // 发送Token统计事件
-    let token_stats = crate::events::TokenUsageStats {
-        prompt_tokens: ai_response_result.usage.prompt_tokens as usize,
-        completion_tokens: ai_response_result.usage.completion_tokens as usize,
-        total_tokens: ai_response_result.usage.total_tokens as usize,
-        context_tokens: context_result.total_tokens,
-        budget_utilization: (ai_response_result.usage.total_tokens as f64 / 102400.0 * 100.0),
-    };
+    println!("继续对话，基于最后一条用户消息: {:?}", last_message.content);
 
-    EventEmitter::send_token_stats(&app_handle, &session.uuid, token_stats)?;
-
-    // 发送整体完成进度
-    EventEmitter::send_progress(
-        &app_handle,
-        &session.uuid,
-        "regenerate",
-        1.0,
-        Some("重新生成完成"),
-    )?;
-
-    // 保存历史记录
-    session.save_history(&app_handle).await?;
-
-    // 更新会话状态
-    SESSION_MANAGER.update_session(session)?;
-
-    Ok(())
+    // 调用公共的AI生成逻辑
+    generate_ai_response(&app_handle, &mut session, "continue").await
 }
