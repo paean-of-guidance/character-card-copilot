@@ -2,8 +2,11 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAppStore } from "@/stores/app";
+import { useNotification } from "@/composables/useNotification";
 import type { CharacterData } from "@/types/character";
-import { getAllCharacters, createCharacter } from "@/services/characterStorage";
+import { getAllCharacters, createCharacter, importCharacterCardFromBytes } from "@/services/characterStorage";
+import { open } from "@tauri-apps/plugin-dialog";
+import { readFile } from "@tauri-apps/plugin-fs";
 import CharacterCard from "@/components/CharacterCard.vue";
 import NewCharacterCard from "@/components/NewCharacterCard.vue";
 
@@ -12,6 +15,7 @@ const router = useRouter();
 const route = useRoute();
 const characters = ref<CharacterData[]>([]);
 const loading = ref(false);
+const { showSuccessToast, showErrorToast } = useNotification();
 
 onMounted(async () => {
     appStore.setPageTitle("首页", false);
@@ -79,6 +83,51 @@ async function handleNewCharacter() {
         console.error("创建角色卡失败:", error);
     }
 }
+
+async function handleImportCharacter() {
+    try {
+        // 打开文件选择对话框
+        const selected = await open({
+            multiple: false,
+            filters: [
+                {
+                    name: "角色卡文件",
+                    extensions: ["png", "json", "card"],
+                },
+            ],
+        });
+
+        if (!selected || typeof selected !== "string") {
+            // 用户取消了选择
+            return;
+        }
+
+        loading.value = true;
+
+        // 使用 Tauri fs 插件读取文件内容
+        const fileData = await readFile(selected);
+        const fileName = selected.split(/[\\/]/).pop() || "character.png";
+
+        // 调用导入API
+        const importedCharacter = await importCharacterCardFromBytes(
+            fileData,
+            fileName,
+        );
+
+        // 添加到角色列表
+        characters.value.push(importedCharacter);
+
+        showSuccessToast("角色导入成功", "导入完成");
+
+        // 跳转到导入的角色编辑页面
+        router.push(`/editor/${importedCharacter.uuid}`);
+    } catch (error) {
+        console.error("导入角色失败:", error);
+        showErrorToast("导入角色失败，请检查文件格式", "导入失败");
+    } finally {
+        loading.value = false;
+    }
+}
 </script>
 
 <template>
@@ -94,7 +143,10 @@ async function handleNewCharacter() {
                 :character="character"
                 @click="handleCharacterClick"
             />
-            <NewCharacterCard @click="handleNewCharacter" />
+            <NewCharacterCard
+                @create-new="handleNewCharacter"
+                @import="handleImportCharacter"
+            />
         </div>
     </div>
 </template>
