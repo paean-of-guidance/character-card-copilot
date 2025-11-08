@@ -2,7 +2,39 @@
 
 > **Living Document**: This document provides a comprehensive overview of the application's architecture, data flows, and development guidelines. It is maintained to help developers understand the codebase structure and make informed technical decisions.
 >
-> **Last Updated**: 2025-11-07
+> **Last Updated**: 2025-11-08
+
+## Table of Contents
+1. [System Overview](#system-overview)
+2. [Frontend Architecture & Data Flows](#frontend-architecture--data-flows)
+3. [Backend Architecture & Data Flows](#backend-architecture--data-flows)
+4. [Event Bridge Highlights](#event-bridge-highlights)
+5. [Command Mapping](#frontend--backend-command-mapping)
+6. [Data Flow Patterns](#data-flow-patterns)
+7. [Partially Implemented Areas](#partially-implemented--in-progress-areas)
+8. [Code Health & Maintenance](#code-health--maintenance-status)
+9. [Improvement Roadmap](#improvement-roadmap)
+10. [Architecture Strengths](#architecture-strengths)
+11. [Development Guidelines](#development-guidelines)
+
+---
+
+## System Overview
+
+Character Card Copilot is a **desktop application** for AI-assisted character card editing, built with:
+- **Frontend**: Vue 3 + TypeScript + TailwindCSS 4.0 + Pinia + vue-router
+- **Backend**: Rust + Tauri
+- **Communication**: Tauri event system + invoke calls
+- **Design Pattern**: Event-driven architecture with centralized state management
+
+### Key Design Principles
+1. **Event-driven**: All state changes flow through the event system
+2. **Service layer mapping**: One-to-one mapping between services and Tauri commands
+3. **Session-based**: Character sessions provide context isolation
+4. **Tool-extensible**: AI tools follow OpenAI function calling schema
+5. **Token-aware**: Smart token budget management across all AI operations
+
+---
 
 ## Frontend Architecture & Data Flows
 ### Bootstrapping & Layout
@@ -77,6 +109,66 @@
 | AIPanel chat operations (`src/components/AIPanel.vue`) | `load_chat_history`, `delete_chat_message` (other operations handled via event system + Pinia Store) | File-backed history (`src-tauri/src/chat_history.rs:1-159` via handlers in `lib.rs:206-292`) |
 | Token utilities (`src/utils/tokenCounter.ts:6-57` & any UI invoking backend) | `count_tokens`, `count_tokens_batch`, `check_token_limit`, `truncate_to_token_limit` | `src-tauri/src/token_counter.rs:1-74` |
 
+---
+
+## Data Flow Patterns
+
+### Pattern 1: Character Editing Flow
+```
+Editor.vue (form input)
+  → updateField(field, value)
+  → invoke('update_character_field', { uuid, field, value })
+  → CharacterSession.update_character_field()
+  → emit('character-updated')
+  → Editor.vue (listen event)
+  → updateEditorFromCharacterData(payload.character_data)
+  → sync to form state
+```
+
+### Pattern 2: AI Chat Message Flow
+```
+AIPanel.vue (user types message)
+  → sendMessageViaBackend()
+  → invoke('send_chat_message', { message })
+  → CharacterSession.build_context()
+  → emit('context-built')
+  → AIChatService.create_chat_completion()
+    → OpenAI API call
+    → Tool call detection
+    → Tool execution (if any)
+    → emit('tool-executed')
+  → emit('message-received')
+  → AIPanel.vue (listen events)
+  → groupedMessages computed
+  → ToolExecutionCard render (if tool calls)
+  → MarkdownRenderer render (if text)
+```
+
+### Pattern 3: WorldBook Management Flow
+```
+WorldBookEditor.vue (create new entry)
+  → worldBookStore.createEntry()
+  → invoke('create_world_book_entry', { ...params })
+  → WorldBookCreator tool execute()
+  → emit('world-book-entry-created')
+  → WorldBookEditor.vue (listen event)
+  → loadWorldBook(uuid)
+  → refresh local state
+```
+
+### Pattern 4: Command Execution Flow
+```
+CommandPalette.vue (user selects command)
+  → executeCommand(command)
+  → backendCommandService.executeCommand(command.id, userInput)
+  → invoke('execute_command', { command_id, user_input })
+  → CommandRegistry.execute_command()
+  → emit('progress')
+  → emit('command-complete')
+  → AIPanel.vue (listen event)
+  → show notification
+```
+
 ## Partially Implemented / In-Progress Areas
 - `context_builder::build_context` (`src-tauri/src/context_builder.rs:483-489`) is a stub that currently returns an error. The AI panel already listens for `context-built`, but only `CharacterSession` emits that event internally; exposing a direct build endpoint will unblock any “preview context” UI.
 - UI TODOs: `src/components/ApiList.vue:38` still lacks the final delete-confirm dialog; `src/components/AIPanel.vue:835-839` earmarks notification hooks for command success/error states in the palette modal.
@@ -100,14 +192,202 @@ The following legacy code has been successfully removed (1,387 lines):
 
 **Impact**: All removed code was verified to have zero references in the active codebase. The application now exclusively uses the backend command system (`backendCommandService` + `src-tauri/src/command_system`) and event-driven state management.
 
-## Suggested Next Steps
+---
+
+## Improvement Roadmap
 
 ### High Priority
-1. **Context Preview Feature**: Finish the `build_context` command and UI (or remove the listener) so users can inspect the assembled prompt before sending a message.
-2. **True Streaming Support**: Replace the placeholder streaming implementation (`src-tauri/src/ai_chat.rs:619-663`) with a true SSE bridge so long replies reach the UI incrementally and align with OpenAI-compatible tooling.
+
+#### 1. Context Preview Feature
+- **Issue**: `context_builder::build_context` is a stub that returns an error
+- **Goal**: Enable users to inspect the assembled prompt before sending a message
+- **Implementation**:
+  - Complete `build_context` command in `src-tauri/src/context_builder.rs:483-489`
+  - Add UI component to display context breakdown
+  - Add token allocation visualization
+- **Files**: `src-tauri/src/context_builder.rs`, new component `ContextPreview.vue`
+
+#### 2. True Streaming Support
+- **Issue**: `AIChatService::create_streaming_chat_completion` is a placeholder that converts full responses to fake SSE
+- **Goal**: Implement real-time streaming for long AI responses
+- **Implementation**:
+  - Replace placeholder in `src-tauri/src/ai_chat.rs:619-663`
+  - Add proper SSE bridge using Reqwest streaming
+  - Update AIPanel to handle incremental updates
+- **Files**: `src-tauri/src/ai_chat.rs`, `src/components/AIPanel.vue`
 
 ### Medium Priority
-3. **UI Polish**: Wire in the remaining notification TODOs:
-   - `src/components/ApiList.vue:38` – Add delete confirmation dialog
-   - `src/components/AIPanel.vue:835-839` – Add toast notifications for command palette success/error states
-4. **Type Cleanup**: Remove the legacy `AITool` interface from `src/services/aiTools.ts:43` in favor of the OpenAI `ChatTool` schema to reduce type confusion.
+
+#### 3. State Management Unification
+- **Issue**: Mixed usage of Pinia stores and direct service calls
+- **Goal**: Consolidate state management into Pinia for consistency
+- **Implementation**:
+  - Migrate `backendCommandService` to a Pinia store
+  - Migrate `characterStorage` operations to store actions
+  - Create composables for common patterns
+- **Files**: New store `commandStore.ts`, updated `characterStore.ts`
+
+#### 4. Performance Optimizations
+- **Issue**: No debouncing, pagination, or virtual scrolling
+- **Goal**: Improve performance for large datasets
+- **Implementation**:
+  - Add debounce to form updates (Editor.vue)
+  - Implement virtual scrolling for WorldBook list
+  - Add pagination for chat history
+  - Implement smart caching for character data
+- **Files**: All form inputs, `WorldBookEditor.vue`, `AIPanel.vue`
+
+#### 5. Type Safety Improvements
+- **Issue**: Multiple `any` types and legacy interfaces
+- **Goal**: Improve type safety across the codebase
+- **Implementation**:
+  - Replace all `any` types with specific interfaces
+  - Remove legacy `AITool` interface from `src/services/aiTools.ts:43`
+  - Add Zod schemas for runtime validation
+  - Create centralized type definitions
+- **Files**: All `.ts` files, new `types/schema.ts`
+
+### Low Priority
+
+#### 6. UX Enhancements
+- **Issue**: Missing loading states, keyboard shortcuts, offline support
+- **Goal**: Improve user experience
+- **Implementation**:
+  - Add loading skeletons for all async operations
+  - Implement keyboard shortcuts (Ctrl+S, Ctrl+Enter, etc.)
+  - Add offline mode with local caching
+  - Add drag-and-drop for world book entries
+  - Implement theme system
+- **Files**: Global components, new composables
+
+#### 7. Developer Experience
+- **Issue**: Limited tooling, logging, and debugging
+- **Goal**: Improve developer productivity
+- **Implementation**:
+  - Add structured logging (Winston/Loguru)
+  - Create VS Code debugging configuration
+  - Add API documentation generation
+  - Create migration scripts for data updates
+  - Add performance monitoring
+- **Files**: New `src/utils/logger.ts`, `scripts/`, `.vscode/`
+
+#### 8. Extensibility
+- **Issue**: Limited plugin system and customization
+- **Goal**: Enable third-party extensions
+- **Implementation**:
+  - Design plugin API for tools
+  - Create theme extension points
+  - Add custom command registration
+  - Implement hot-reload for development
+- **Files**: New `src/plugin-system/`, documentation
+
+---
+
+## Architecture Strengths
+
+### ✅ Well-Designed Components
+
+1. **Event-Driven Architecture**
+   - Real-time UI updates without polling
+   - Loose coupling between components
+   - Easy to trace data flow
+   - 11 distinct event types for different operations
+
+2. **Session Management**
+   - Clean separation of character contexts
+   - Automatic cleanup of expired sessions
+   - Support for up to 10 concurrent sessions
+   - State persistence across route changes
+
+3. **Token Budget Management**
+   - Precise token counting with `tiktoken-rs`
+   - Smart allocation across system/character/history buckets
+   - Automatic truncation when needed
+   - Real-time token statistics
+
+4. **Tool System**
+   - OpenAI function calling compatibility
+   - Extensible tool registry
+   - Automatic tool discovery
+   - Event-driven tool execution feedback
+
+5. **Command System**
+   - Async command bus pattern
+   - Searchable command palette
+   - Confirmation workflows
+   - Progress tracking
+
+### 📊 Code Quality Metrics
+
+- **Lines Removed**: 1,387 (2025-11-07 cleanup)
+- **Event Types**: 11 well-defined backend events
+- **Command Categories**: 6+ distinct backend subsystems
+- **Session Limit**: 10 active sessions (configurable)
+- **Tool Categories**: 2+ (character, worldbook)
+
+### 🔄 Data Flow Advantages
+
+1. **Predictable**: All flows follow documented patterns
+2. **Debuggable**: Events provide clear audit trail
+3. **Scalable**: Session-based isolation enables growth
+4. **Maintainable**: One-to-one service command mapping
+
+---
+
+## Development Guidelines
+
+### When Adding New Features
+
+1. **Follow the Event Pattern**
+   - Emit events for all state changes
+   - Listen to events instead of direct calls
+   - Use EventEmitter helpers in `src-tauri/src/events.rs`
+
+2. **Service Layer Rules**
+   - Services map 1:1 to Tauri commands
+   - No business logic in services
+   - Return promises/async results
+   - Handle errors consistently
+
+3. **State Management**
+   - Use Pinia for shared state
+   - Use local `ref` for component-specific state
+   - Sync via events, not direct updates
+   - Store persists across route changes
+
+4. **Type Safety**
+   - Avoid `any` types
+   - Define interfaces in `src/types/`
+   - Use TypeScript strict mode
+   - Add runtime validation (Zod) for external data
+
+5. **Performance**
+   - Add debouncing for form inputs (300ms)
+   - Implement pagination for lists (>50 items)
+   - Use virtual scrolling for large datasets
+   - Cache expensive computations
+
+6. **Error Handling**
+   - Emit structured error events
+   - Show user-friendly notifications
+   - Log errors with context
+   - Provide retry mechanisms
+
+7. **Testing Strategy**
+   - Unit test business logic (Rust)
+   - Integration test event flows
+   - E2E test critical user journeys
+   - Mock external API calls
+
+### Code Review Checklist
+
+- [ ] Follows event-driven pattern
+- [ ] Uses existing events or defines new ones
+- [ ] Type-safe (no `any` types)
+- [ ] Error handling implemented
+- [ ] Performance considered (debouncing, pagination)
+- [ ] Documentation added
+- [ ] No hardcoded strings (use i18n keys)
+- [ ] Accessible (keyboard navigation, ARIA labels)
+- [ ] Mobile responsive (if UI component)
+- [ ] Token usage optimized
