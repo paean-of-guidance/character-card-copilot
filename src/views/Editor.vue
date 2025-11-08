@@ -25,7 +25,7 @@ import type {
     CharacterLoadedPayload,
     CharacterUpdatedPayload,
     SessionUnloadedPayload,
-    ErrorPayload
+    ErrorPayload,
 } from "@/types/events";
 
 const appStore = useAppStore();
@@ -64,9 +64,9 @@ function toggleEditorMode() {
     editorMode.value = newMode;
 
     // 世界书模式下自动隐藏AI面板，获得更多空间
-    if (newMode === "worldBook") {
-        aiPanelVisible.value = false;
-    }
+    // if (newMode === "worldBook") {
+    //     aiPanelVisible.value = false;
+    // }
 }
 
 // ==================== 后端事件监听 ====================
@@ -78,59 +78,71 @@ async function initializeBackendEventListeners() {
     console.log("Editor: 初始化后端事件监听器...");
 
     // 角色加载事件
-    const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>("character-loaded", async (event) => {
-        console.log("Editor: 🎭 角色加载事件:", event.payload);
-        const payload = event.payload;
+    const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>(
+        "character-loaded",
+        async (event) => {
+            console.log("Editor: 🎭 角色加载事件:", event.payload);
+            const payload = event.payload;
 
-        // 如果是当前编辑的角色，更新本地数据
-        if (payload.uuid === characterUUID.value) {
-            console.log("Editor: 更新角色数据到编辑器");
-            await updateEditorFromCharacterData(payload.character_data);
-        }
-    });
+            // 如果是当前编辑的角色，更新本地数据
+            if (payload.uuid === characterUUID.value) {
+                console.log("Editor: 更新角色数据到编辑器");
+                await updateEditorFromCharacterData(payload.character_data);
+            }
+        },
+    );
 
     // 角色更新事件
-    const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>("character-updated", async (event) => {
-        console.log("Editor: 🔄 角色更新事件:", event.payload);
-        const payload = event.payload;
+    const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>(
+        "character-updated",
+        async (event) => {
+            console.log("Editor: 🔄 角色更新事件:", event.payload);
+            const payload = event.payload;
 
-        // 如果是当前编辑的角色，更新本地数据
-        if (payload.uuid === characterUUID.value) {
-            console.log("Editor: 角色数据已更新，同步到编辑器");
-            await updateEditorFromCharacterData(payload.character_data);
+            // 如果是当前编辑的角色，更新本地数据
+            if (payload.uuid === characterUUID.value) {
+                console.log("Editor: 角色数据已更新，同步到编辑器");
+                await updateEditorFromCharacterData(payload.character_data);
 
-            // 显示更新通知
-            switch (payload.update_type) {
-                case 'BasicInfo':
-                    showSuccessToast("角色基本信息已更新", "数据同步");
-                    break;
-                case 'Worldbook':
-                    showSuccessToast("世界书已更新", "数据同步");
-                    break;
-                case 'Tags':
-                    showSuccessToast("角色标签已更新", "数据同步");
-                    break;
-                case 'FullData':
-                    showSuccessToast("角色数据已更新", "数据同步");
-                    break;
-                default:
-                    if (typeof payload.update_type === 'object' && 'Fields' in payload.update_type) {
-                        showSuccessToast("角色字段已更新", "数据同步");
-                    }
+                // 显示更新通知
+                switch (payload.update_type) {
+                    case "BasicInfo":
+                        showSuccessToast("角色基本信息已更新", "数据同步");
+                        break;
+                    case "Worldbook":
+                        showSuccessToast("世界书已更新", "数据同步");
+                        break;
+                    case "Tags":
+                        showSuccessToast("角色标签已更新", "数据同步");
+                        break;
+                    case "FullData":
+                        showSuccessToast("角色数据已更新", "数据同步");
+                        break;
+                    default:
+                        if (
+                            typeof payload.update_type === "object" &&
+                            "Fields" in payload.update_type
+                        ) {
+                            showSuccessToast("角色字段已更新", "数据同步");
+                        }
+                }
             }
-        }
-    });
+        },
+    );
 
     // 会话卸载事件
-    const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>("session-unloaded", (event) => {
-        console.log("Editor: 🚪 会话卸载事件:", event.payload);
-        const payload = event.payload;
+    const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>(
+        "session-unloaded",
+        (event) => {
+            console.log("Editor: 🚪 会话卸载事件:", event.payload);
+            const payload = event.payload;
 
-        // 如果是当前编辑角色的会话被卸载，显示提示
-        if (payload.uuid === characterUUID.value) {
-            showWarningToast("角色会话已结束", "会话管理");
-        }
-    });
+            // 如果是当前编辑角色的会话被卸载，显示提示
+            if (payload.uuid === characterUUID.value) {
+                showWarningToast("角色会话已结束", "会话管理");
+            }
+        },
+    );
 
     // 错误事件
     const unlistenError = await listen<ErrorPayload>("error", (event) => {
@@ -141,7 +153,7 @@ async function initializeBackendEventListeners() {
         if (payload.uuid === characterUUID.value) {
             showErrorToast(
                 `系统错误: ${payload.error_message}`,
-                payload.error_code
+                payload.error_code,
             );
         }
     });
@@ -162,7 +174,7 @@ async function initializeBackendEventListeners() {
  */
 function cleanupEventListeners() {
     console.log("Editor: 清理事件监听器...");
-    eventUnlisteners.value.forEach(unlisten => {
+    eventUnlisteners.value.forEach((unlisten) => {
         try {
             unlisten();
         } catch (error) {
@@ -287,7 +299,7 @@ async function loadCharacterData(uuid: string) {
             // 🔥 新增：触发后端会话加载，让AI可以看到角色数据
             console.log("Editor: 触发后端会话加载...", uuid);
             try {
-                await invoke('load_character_session', { uuid });
+                await invoke("load_character_session", { uuid });
                 console.log("Editor: 后端会话加载成功");
             } catch (error) {
                 console.error("Editor: 后端会话加载失败:", error);
@@ -588,7 +600,9 @@ onUnmounted(async () => {
                                 >
                                 <input
                                     v-model="characterData.name"
-                                    @blur="updateField('name', characterData.name)"
+                                    @blur="
+                                        updateField('name', characterData.name)
+                                    "
                                     type="text"
                                     class="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 text-lg font-medium"
                                     placeholder="请输入角色名称"
@@ -677,7 +691,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.description"
-                                @blur="updateField('description', characterData.description)"
+                                @blur="
+                                    updateField(
+                                        'description',
+                                        characterData.description,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="5"
                                 placeholder="角色的物理外观、身份和基本设定"
@@ -697,7 +716,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.personality"
-                                @blur="updateField('personality', characterData.personality)"
+                                @blur="
+                                    updateField(
+                                        'personality',
+                                        characterData.personality,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="6"
                                 placeholder="描述角色的性格特征"
@@ -717,7 +741,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.scenario"
-                                @blur="updateField('scenario', characterData.scenario)"
+                                @blur="
+                                    updateField(
+                                        'scenario',
+                                        characterData.scenario,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="描述角色所处的场景和环境"
@@ -737,7 +766,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.first_mes"
-                                @blur="updateField('first_mes', characterData.first_mes)"
+                                @blur="
+                                    updateField(
+                                        'first_mes',
+                                        characterData.first_mes,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="角色的第一句话或开场问候"
@@ -757,7 +791,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.mes_example"
-                                @blur="updateField('mes_example', characterData.mes_example)"
+                                @blur="
+                                    updateField(
+                                        'mes_example',
+                                        characterData.mes_example,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="6"
                                 placeholder="示例对话格式，展示角色的说话风格"
@@ -777,7 +816,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.creator_notes"
-                                @blur="updateField('creator_notes', characterData.creator_notes)"
+                                @blur="
+                                    updateField(
+                                        'creator_notes',
+                                        characterData.creator_notes,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="创作时的备注和说明"
@@ -797,7 +841,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.system_prompt"
-                                @blur="updateField('system_prompt', characterData.system_prompt)"
+                                @blur="
+                                    updateField(
+                                        'system_prompt',
+                                        characterData.system_prompt,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="4"
                                 placeholder="AI系统使用的提示词"
@@ -823,7 +872,12 @@ onUnmounted(async () => {
                                 v-model="
                                     characterData.post_history_instructions
                                 "
-                                @blur="updateField('post_history_instructions', characterData.post_history_instructions)"
+                                @blur="
+                                    updateField(
+                                        'post_history_instructions',
+                                        characterData.post_history_instructions,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="对话历史后的处理指令"
@@ -844,7 +898,12 @@ onUnmounted(async () => {
                             </div>
                             <textarea
                                 v-model="characterData.alternate_greetings"
-                                @blur="updateField('alternate_greetings', characterData.alternate_greetings)"
+                                @blur="
+                                    updateField(
+                                        'alternate_greetings',
+                                        characterData.alternate_greetings,
+                                    )
+                                "
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                                 rows="3"
                                 placeholder="备用开场白，用换行分隔多个问候语"
@@ -878,7 +937,12 @@ onUnmounted(async () => {
                             >
                             <input
                                 v-model="characterData.creator"
-                                @blur="updateField('creator', characterData.creator)"
+                                @blur="
+                                    updateField(
+                                        'creator',
+                                        characterData.creator,
+                                    )
+                                "
                                 type="text"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
                                 placeholder="创作者名称"
@@ -892,7 +956,12 @@ onUnmounted(async () => {
                             >
                             <input
                                 v-model="characterData.character_version"
-                                @blur="updateField('character_version', characterData.character_version)"
+                                @blur="
+                                    updateField(
+                                        'character_version',
+                                        characterData.character_version,
+                                    )
+                                "
                                 type="text"
                                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
                                 placeholder="角色卡版本号"
