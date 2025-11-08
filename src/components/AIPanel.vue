@@ -1,25 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
-import {
-    MdOutlineRefresh,
-    MdOutlineEdit,
-    MdOutlineDelete,
-    MdSend,
-} from "vue-icons-plus/md";
 import { getAllApiConfigs } from "@/services/apiConfig";
 import type { ApiConfig, ChatMessage } from "@/types/api";
 import { AIConfigService, type AIRole } from "@/services/aiConfig";
-import MarkdownRenderer from "./MarkdownRenderer.vue";
 import CommandPalette from "./CommandPalette.vue";
 import Modal from "./Modal.vue";
 import ToolExecutionCard from "./ToolExecutionCard.vue";
+import ChatInput from "./ai/ChatInput.vue";
+import MessageBubble from "./ai/MessageBubble.vue";
 import { backendCommandService } from "@/services/backendCommandService";
 import type { CommandMetadata } from "@/types/commands";
 import type { ModalOptions } from "@/utils/notification";
 import { useChatStore } from "@/stores/chat";
 import { useAiStore } from "@/stores/ai";
 import { useAiEventListeners, type DisplayMessage } from "@/composables/ai/useAiEventListeners";
-import { useMessageGrouping, type GroupedMessage } from "@/composables/ai/useMessageGrouping";
+import { useMessageGrouping } from "@/composables/ai/useMessageGrouping";
 
 // 组件props
 const props = defineProps<{
@@ -53,7 +48,9 @@ const { setupListeners, cleanup: cleanupEventListeners } = useAiEventListeners(
     isLoadingFromBackend
 );
 
+// 输入内容（用于命令面板搜索）
 const userInput = ref("");
+
 const selectedApi = ref("");
 const apiConfigs = ref<ApiConfig[]>([]);
 
@@ -63,12 +60,9 @@ const aiRoles = ref<Array<{ name: string; role: AIRole }>>([]);
 const currentRoleConfig = ref<AIRole | null>(null);
 const defaultRole = ref("");
 
-// 输入框自适应高度
-const textareaRef = ref<HTMLTextAreaElement>();
-const inputRows = ref(1);
-
-// 聊天容器引用
+// 聊天容器和输入框引用
 const chatMessagesRef = ref<HTMLElement>();
+const chatInputRef = ref<InstanceType<typeof ChatInput>>();
 
 // 编辑相关状态
 const editingContent = ref("");
@@ -160,92 +154,55 @@ watch(selectedRole, () => {
     updateCurrentRoleConfig();
 });
 
-// 自动调整输入框高度
-function adjustTextareaHeight() {
-    nextTick(() => {
-        if (textareaRef.value) {
-            const textarea = textareaRef.value;
-            const lineHeight = 24; // 行高24px
-            const maxRows = 5;
-            const maxHeight = lineHeight * maxRows;
+// 发送消息（从 ChatInput 组件接收）
+async function handleSendMessage(message: string) {
+    if (aiStore.isLoading) return;
 
-            // 先重置高度为最小高度
-            textarea.style.height = "40px";
-
-            // 获取实际需要的行数
-            const lines = textarea.value.split("\n").length;
-
-            // 只有当内容包含换行符或者内容长度超过一行时才调整高度
-            if (lines > 1 || textarea.value.length > 60) {
-                const scrollHeight = textarea.scrollHeight;
-                const newHeight = Math.min(scrollHeight, maxHeight);
-                textarea.style.height = newHeight + "px";
-                inputRows.value = Math.min(lines, maxRows);
-            } else {
-                // 保持最小高度
-                textarea.style.height = "40px";
-                inputRows.value = 1;
-            }
-        }
-    });
-}
-
-// 处理用户输入
-function handleInput() {
-    // 只有当输入内容包含换行符时才调整高度
-    if (userInput.value.includes("\n") || userInput.value.length > 80) {
-        adjustTextareaHeight();
-    } else {
-        // 如果没有换行符且长度较短，保持最小高度
-        if (textareaRef.value) {
-            textareaRef.value.style.height = "40px";
-        }
-        inputRows.value = 1;
-    }
-}
-
-// 发送消息
-async function sendMessage() {
-    // 始终使用后端会话方式
-    await sendMessageViaBackend();
-}
-
-// 处理键盘事件
-function handleKeydown(event: KeyboardEvent) {
-    // 如果命令面板打开，将键盘事件委托给命令面板处理
-    if (showCommandPalette.value && commandPaletteRef.value) {
-        // 命令面板处理以下按键：ArrowUp, ArrowDown, Enter, Tab, Space, Escape
-        if (
-            ["ArrowUp", "ArrowDown", "Enter", "Tab", " ", "Escape"].includes(
-                event.key,
-            )
-        ) {
-            commandPaletteRef.value.handleKeydown(event);
+    // 检查是否有活跃的后端会话
+    if (!aiStore.isBackendSessionActive) {
+        const characterId = getCurrentCharacterId();
+        if (!characterId) {
+            console.error("无法获取角色ID，无法发送消息");
             return;
         }
-    }
 
-    // 检测"/"键触发命令面板
-    // 当且仅当输入框完全为空时，按下"/"才触发命令面板
-    if (event.key === "/" && userInput.value === "") {
-        event.preventDefault();
-        openCommandPalette();
-        return;
-    }
-
-    // 普通发送消息逻辑（Shift+Enter换行，Enter发送）
-    if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
+        console.log("触发后端角色会话加载...");
+        isLoadingFromBackend.value = true;
+        try {
+            await aiStore.loadCharacterSession(characterId);
+            // 等待角色加载事件完成后再发送消息
+            setTimeout(async () => {
+                if (aiStore.isBackendSessionActive) {
+                    await aiStore.sendChatMessage(message);
+                } else {
+                    console.error("后端会话加载失败");
+                    isLoadingFromBackend.value = false;
+                }
+            }, 500);
+        } catch (error) {
+            console.error("加载角色会话失败:", error);
+            isLoadingFromBackend.value = false;
+        }
+    } else {
+        // 直接发送消息
+        try {
+            await aiStore.sendChatMessage(message);
+        } catch (error) {
+            console.error("发送消息失败:", error);
+        }
     }
 }
 
-// 格式化时间
-function formatTime(date: Date) {
-    return date.toLocaleTimeString("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+// 处理来自 ChatInput 的键盘事件（命令面板导航）
+function handleInputKeydown(event: KeyboardEvent) {
+    if (commandPaletteRef.value) {
+        commandPaletteRef.value.handleKeydown(event);
+    }
+}
+
+// 处理输入变化（用于命令面板搜索）
+function handleInputChange(value: string) {
+    userInput.value = value;
 }
 
 // 获取当前角色ID
@@ -308,56 +265,6 @@ async function initializeChatHistory() {
     }
 }
 
-/**
- * 通过后端发送消息
- */
-async function sendMessageViaBackend() {
-    if (!userInput.value.trim() || aiStore.isLoading) return;
-
-    const message = userInput.value.trim();
-    userInput.value = "";
-
-    // 重置输入框高度
-    if (textareaRef.value) {
-        textareaRef.value.style.height = "40px";
-    }
-    inputRows.value = 1;
-
-    // 检查是否有活跃的后端会话
-    if (!aiStore.isBackendSessionActive) {
-        const characterId = getCurrentCharacterId();
-        if (!characterId) {
-            console.error("无法获取角色ID，无法发送消息");
-            return;
-        }
-
-        console.log("触发后端角色会话加载...");
-        isLoadingFromBackend.value = true;
-        try {
-            await aiStore.loadCharacterSession(characterId);
-            // 等待角色加载事件完成后再发送消息
-            setTimeout(async () => {
-                if (aiStore.isBackendSessionActive) {
-                    await aiStore.sendChatMessage(message);
-                } else {
-                    console.error("后端会话加载失败");
-                    isLoadingFromBackend.value = false;
-                }
-            }, 500);
-        } catch (error) {
-            console.error("加载角色会话失败:", error);
-            isLoadingFromBackend.value = false;
-        }
-    } else {
-        // 直接发送消息
-        try {
-            await aiStore.sendChatMessage(message);
-        } catch (error) {
-            console.error("发送消息失败:", error);
-            aiStore.isLoading = false;
-        }
-    }
-}
 
 // 监听角色数据变化
 watch(
@@ -399,11 +306,6 @@ watch(
     },
 );
 
-// 获取消息在 messages 数组中的索引
-function getMessageIndex(message: DisplayMessage): number {
-    return messages.value.findIndex(m => m.id === message.id);
-}
-
 // 删除工具调用组（从 ToolExecutionCard 触发）
 async function deleteToolExecutionGroup(groupIndex: number) {
     const group = groupedMessages.value[groupIndex];
@@ -434,28 +336,30 @@ async function deleteToolExecutionGroup(groupIndex: number) {
     await deleteMessage(startIndex);
 }
 
-// 编辑消息
-function editMessage(index: number) {
+// 开始编辑消息（从 MessageBubble 触发）
+function handleStartEdit(messageId: string) {
+    const index = messages.value.findIndex(m => m.id === messageId);
     if (index >= 0 && index < messages.value.length) {
         editingContent.value = messages.value[index].content;
         messages.value[index].isEditing = true;
     }
 }
 
-// 取消编辑
-function cancelEdit(index: number) {
+// 取消编辑（从 MessageBubble 触发）
+function handleCancelEdit(messageId: string) {
+    const index = messages.value.findIndex(m => m.id === messageId);
     if (index >= 0 && index < messages.value.length) {
         messages.value[index].isEditing = false;
     }
     editingContent.value = "";
 }
 
-// 保存编辑
-async function saveEdit(index: number) {
+// 保存编辑（从 MessageBubble 触发）
+async function handleSaveEdit(messageId: string, newContent: string) {
+    const index = messages.value.findIndex(m => m.id === messageId);
     if (index >= 0 && index < messages.value.length) {
         try {
             const originalContent = messages.value[index].content;
-            const newContent = editingContent.value.trim();
 
             if (!newContent) {
                 // 如果内容为空，删除消息
@@ -484,17 +388,10 @@ async function saveEdit(index: number) {
     }
 }
 
-// 处理编辑时的键盘事件
-function handleEditKeydown(index: number, event: KeyboardEvent) {
-    if (event.key === "Enter" && event.ctrlKey) {
-        // Ctrl+Enter 保存编辑
-        event.preventDefault();
-        saveEdit(index);
-    } else if (event.key === "Escape") {
-        // Escape 取消编辑
-        event.preventDefault();
-        cancelEdit(index);
-    }
+// 删除消息（从 MessageBubble 触发）
+async function handleDeleteMessage(messageId: string) {
+    const index = messages.value.findIndex(m => m.id === messageId);
+    await deleteMessage(index);
 }
 
 // 删除消息
@@ -650,7 +547,9 @@ async function updateFilteredCommands() {
  */
 function openCommandPalette() {
     // 设置用户输入为"/"
-    userInput.value = "/";
+    if (chatInputRef.value) {
+        chatInputRef.value.setValue("/");
+    }
     commandSearchQuery.value = "";
 
     // 更新可用命令
@@ -667,16 +566,10 @@ function closeCommandPalette() {
     showCommandPalette.value = false;
     commandSearchQuery.value = "";
 
-    // 清空输入框中的"/"或以"/"开头的命令
-    if (userInput.value === "/" || userInput.value.startsWith("/")) {
-        userInput.value = "";
+    // 清空输入框
+    if (chatInputRef.value) {
+        chatInputRef.value.clear();
     }
-
-    // 重置输入框高度
-    if (textareaRef.value) {
-        textareaRef.value.style.height = "40px";
-    }
-    inputRows.value = 1;
 }
 
 /**
@@ -956,123 +849,22 @@ onUnmounted(() => {
                         />
 
                         <!-- 普通消息 -->
-                        <div
+                        <MessageBubble
                             v-else-if="group.type === 'normal'"
-                            class="max-w-[80%] px-4 py-2 rounded-lg group relative"
-                            :class="
-                                group.message.role === 'user'
-                                    ? 'bg-blue-500 text-white rounded-br-sm'
-                                    : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
-                            "
-                        >
-                            <MarkdownRenderer
-                                v-if="group.message.role === 'assistant'"
-                                :content="group.message.content"
-                                class="text-sm"
-                            />
-                            <div v-else class="text-sm whitespace-pre-wrap">
-                                {{ group.message.content }}
-                            </div>
-                            <div
-                                class="text-xs mt-1 opacity-70"
-                                :class="
-                                    group.message.role === 'user'
-                                        ? 'text-blue-100'
-                                        : 'text-gray-500'
-                                "
-                            >
-                                {{ formatTime(group.message.timestamp) }}
-                            </div>
-
-                            <!-- 消息操作按钮 -->
-                            <div
-                                v-if="!aiStore.isLoading"
-                                class="absolute -bottom-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1"
-                                :class="
-                                    group.message.role === 'user'
-                                        ? 'left-0'
-                                        : 'right-0'
-                                "
-                            >
-                                <!-- 用户消息：生成AI回复按钮（仅最后一条显示） -->
-                                <button
-                                    v-if="
-                                        group.message.role === 'user' &&
-                                        groupIndex === groupedMessages.length - 1
-                                    "
-                                    @click="continueFromUserMessage()"
-                                    class="p-1 bg-blue-100 hover:bg-blue-200 rounded-full transition-colors"
-                                    title="生成AI回复"
-                                >
-                                    <MdSend
-                                        class="w-4 h-4 text-blue-600"
-                                    />
-                                </button>
-
-                                <!-- AI消息：重新生成按钮 -->
-                                <button
-                                    v-if="
-                                        group.message.role === 'assistant' &&
-                                        groupIndex === groupedMessages.length - 1
-                                    "
-                                    @click="regenerateResponse()"
-                                    class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                                    title="重新生成"
-                                >
-                                    <MdOutlineRefresh
-                                        class="w-4 h-4 text-gray-600"
-                                    />
-                                </button>
-
-                                <!-- 编辑按钮 -->
-                                <button
-                                    @click="editMessage(getMessageIndex(group.message))"
-                                    class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                                    title="编辑消息"
-                                >
-                                    <MdOutlineEdit
-                                        class="w-4 h-4 text-gray-600"
-                                    />
-                                </button>
-
-                                <!-- 删除按钮 -->
-                                <button
-                                    @click="deleteMessage(getMessageIndex(group.message))"
-                                    class="p-1 bg-gray-100 hover:bg-red-100 rounded-full transition-colors"
-                                    title="删除消息"
-                                >
-                                    <MdOutlineDelete
-                                        class="w-4 h-4 text-gray-600 hover:text-red-600"
-                                    />
-                                </button>
-                            </div>
-
-                            <!-- 编辑模式的输入框 -->
-                            <div v-if="group.message.isEditing" class="mt-2">
-                                <textarea
-                                    v-model="editingContent"
-                                    @keydown="handleEditKeydown(getMessageIndex(group.message), $event)"
-                                    @blur="saveEdit(getMessageIndex(group.message))"
-                                    class="w-full p-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    rows="3"
-                                    placeholder="编辑消息内容..."
-                                ></textarea>
-                                <div class="flex gap-2 mt-2">
-                                    <button
-                                        @click="saveEdit(getMessageIndex(group.message))"
-                                        class="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors"
-                                    >
-                                        保存
-                                    </button>
-                                    <button
-                                        @click="cancelEdit(getMessageIndex(group.message))"
-                                        class="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 transition-colors"
-                                    >
-                                        取消
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                            :message-id="group.message.id"
+                            :role="group.message.role as 'user' | 'assistant'"
+                            :content="group.message.content"
+                            :timestamp="group.message.timestamp"
+                            :is-editing="group.message.isEditing"
+                            :loading="aiStore.isLoading"
+                            :is-last-message="groupIndex === groupedMessages.length - 1"
+                            @continue="continueFromUserMessage"
+                            @regenerate="regenerateResponse"
+                            @start-edit="handleStartEdit(group.message.id)"
+                            @save-edit="handleSaveEdit(group.message.id, $event)"
+                            @cancel-edit="handleCancelEdit(group.message.id)"
+                            @delete="handleDeleteMessage(group.message.id)"
+                        />
                     </div>
 
                     <!-- 加载中指示器 -->
@@ -1110,50 +902,16 @@ onUnmounted(() => {
                     @close="closeCommandPalette"
                 />
 
-                <div class="flex gap-3">
-                    <textarea
-                        ref="textareaRef"
-                        v-model="userInput"
-                        @input="handleInput"
-                        @keydown="handleKeydown"
-                        :disabled="aiStore.isLoading"
-                        placeholder="输入消息... (Enter发送，Shift+Enter换行)"
-                        class="flex-1 resize-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-                        style="
-                            height: 40px;
-                            min-height: 40px;
-                            max-height: 120px;
-                            line-height: 24px;
-                        "
-                    ></textarea>
-
-                    <button
-                        @click="sendMessage"
-                        :disabled="!userInput.trim() || aiStore.isLoading"
-                        class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center self-end"
-                        title="发送消息"
-                        style="height: 40px"
-                    >
-                        <svg
-                            v-if="!aiStore.isLoading"
-                            class="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                            />
-                        </svg>
-                        <div
-                            v-else
-                            class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-                        ></div>
-                    </button>
-                </div>
+                <ChatInput
+                    ref="chatInputRef"
+                    :disabled="aiStore.isLoading"
+                    :loading="aiStore.isLoading"
+                    :command-palette-open="showCommandPalette"
+                    @send="handleSendMessage"
+                    @open-command-palette="openCommandPalette"
+                    @keydown="handleInputKeydown"
+                    @input="handleInputChange"
+                />
 
                 <!-- 状态提示 -->
                 <div class="flex justify-between items-center mt-2">
@@ -1215,19 +973,6 @@ onUnmounted(() => {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
-}
-
-/* 输入框样式 */
-textarea {
-    line-height: 1.5;
-    font-family: inherit;
-}
-
-/* 输入框焦点样式 */
-textarea:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* 加载动画 */
