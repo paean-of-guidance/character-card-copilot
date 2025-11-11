@@ -1,0 +1,103 @@
+name: publish
+
+on:
+  push:
+    # 你可以改成 tags 触发： 'v*' 或 'app-v*'
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write   # 需要写入 Release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS 双架构（分别构建）
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          # Ubuntu（Tauri v2 需 4.1；v1 需 4.0，本示例两者都装）
+          - platform: ubuntu-22.04
+            args: ""
+          # Windows
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # 仅在 macOS 安装双 target（对 Win/Linux 加速）
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Install Linux deps (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend deps
+        # 按你的包管理器改：npm ci / pnpm i --frozen-lockfile / bun i
+        run: pnpm install --frozen-lockfile
+
+      # 可选：构建你的前端产物（若你不是运行时构建）
+      # - name: Build web
+      #   run: yarn build
+
+      # --- 可选：平台签名/公证（把证书/密钥放到 Secrets 后在各平台条件执行） ---
+      # macOS 代码签名/公证占位（示例环境变量；按你的流程接入）
+      # - name: Setup macOS codesign/notarize
+      #   if: matrix.platform == 'macos-latest'
+      #   run: echo "准备钥匙串或写入证书..."  # 这里换成你实际脚本（导入 .p12、设置 keychain 等）
+
+      # Windows 代码签名占位
+      # - name: Setup Windows SignTool
+      #   if: matrix.platform == 'windows-latest'
+      #   run: echo "解密 PFX 并设置 SIGntool 环境变量..."
+
+      - name: Tauri build & release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- 如果你做签名/公证，这里放相关 Secrets（示例） ---
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}    # App 专用密码
+          # APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          # APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          # WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        with:
+          # 当项目根不是仓库根时，指定：
+          # projectPath: src-tauri
+          # distPath/iconPath 也可在此覆盖 tauri 配置
+          tagName: app-v__VERSION__           # __VERSION__ 自动替换为 tauri.conf 中版本
+          releaseName: App v__VERSION__
+          releaseBody: See the assets to download this version and install.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
