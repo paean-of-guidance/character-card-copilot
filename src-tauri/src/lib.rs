@@ -42,6 +42,8 @@ use context_builder::build_context;
 use token_counter::{get_token_counter, TokenCountResult};
 use command_system::tauri_commands::{get_available_commands, search_commands, execute_command};
 
+const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
+
 // ====================== 角色卡相关命令 ======================
 
 #[tauri::command]
@@ -93,7 +95,7 @@ async fn update_character_field(
         "post_history_instructions" => character_data.card.data.post_history_instructions = field_value,
         "alternate_greetings" => {
             character_data.card.data.alternate_greetings = field_value
-                .split('\n')
+                .split(ALTERNATE_GREETING_MARKER)
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();

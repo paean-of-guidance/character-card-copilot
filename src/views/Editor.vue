@@ -43,6 +43,7 @@ const characterUUID = ref<string>("");
 const aiPanelVisible = ref(true);
 const backgroundPath = ref<string>("");
 const isUploading = ref(false);
+const ALTERNATE_GREETING_MARKER = "<START_ALT>";
 
 // 编辑器模式：'character' 或 'worldBook'
 const editorMode = ref<"character" | "worldBook">("character");
@@ -198,6 +199,41 @@ function cleanupEventListeners() {
 /**
  * 从CharacterData更新编辑器表单数据
  */
+function parseAlternateGreetingSegments(
+    source: string | string[] | undefined | null,
+) {
+    if (Array.isArray(source)) {
+        return source
+            .map((segment) => segment.trim())
+            .filter((segment) => segment.length > 0);
+    }
+
+    return (source || "")
+        .split(ALTERNATE_GREETING_MARKER)
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+}
+
+function formatAlternateGreetingsForInput(values?: string[]) {
+    const segments = parseAlternateGreetingSegments(values ?? []);
+    if (!segments.length) {
+        return "";
+    }
+    return segments
+        .map((segment) => `${ALTERNATE_GREETING_MARKER}\n${segment}`)
+        .join("\n");
+}
+
+function serializeAlternateGreetingsValue(value: string | string[]) {
+    const segments = parseAlternateGreetingSegments(value);
+    if (!segments.length) {
+        return "";
+    }
+    return segments
+        .map((segment) => `${ALTERNATE_GREETING_MARKER}\n${segment}`)
+        .join("\n");
+}
+
 async function updateEditorFromCharacterData(incomingCharacterData: any) {
     try {
         // 保存完整的角色对象
@@ -215,7 +251,9 @@ async function updateEditorFromCharacterData(incomingCharacterData: any) {
             creator_notes: cardData.creator_notes || "",
             system_prompt: cardData.system_prompt || "",
             post_history_instructions: cardData.post_history_instructions || "",
-            alternate_greetings: cardData.alternate_greetings?.join("\n") || "",
+            alternate_greetings: formatAlternateGreetingsForInput(
+                cardData.alternate_greetings,
+            ),
             tags: cardData.tags?.join(", ") || "",
             creator: cardData.creator || "",
             character_version: cardData.character_version || "",
@@ -331,8 +369,9 @@ async function loadCharacterData(uuid: string) {
                 system_prompt: character.card.data.system_prompt,
                 post_history_instructions:
                     character.card.data.post_history_instructions,
-                alternate_greetings:
-                    character.card.data.alternate_greetings.join("\n"),
+                alternate_greetings: formatAlternateGreetingsForInput(
+                    character.card.data.alternate_greetings,
+                ),
                 tags: character.card.data.tags.join(", "),
                 creator: character.card.data.creator,
                 character_version: character.card.data.character_version,
@@ -355,10 +394,18 @@ async function updateField(
     if (!characterUUID.value) return;
 
     // 转换字符串数组为字符串进行比较
-    const oldStr = Array.isArray(oldValue) ? oldValue.join("\n") : oldValue || "";
-    const newStr = Array.isArray(newValue)
-        ? newValue.join("\n")
-        : newValue || "";
+    const normalizeValue = (value: string | string[]) => {
+        if (fieldName === "alternate_greetings") {
+            return serializeAlternateGreetingsValue(value);
+        }
+        if (Array.isArray(value)) {
+            return value.join("\n");
+        }
+        return value || "";
+    };
+
+    const oldStr = normalizeValue(oldValue);
+    const newStr = normalizeValue(newValue);
 
     // 只有值真正改变时才更新
     if (oldStr !== newStr) {

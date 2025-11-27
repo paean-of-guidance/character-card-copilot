@@ -4,6 +4,15 @@ import type { CharacterData, TavernCardV2 } from '@/types/character'
 import * as characterStorage from '@/services/characterStorage'
 import { CharacterStateService } from '@/services/characterState'
 
+const ALTERNATE_GREETING_MARKER = '<START_ALT>'
+
+function parseAlternateGreetingSegments(value: string) {
+  return value
+    .split(ALTERNATE_GREETING_MARKER)
+    .map(segment => segment.trim())
+    .filter(segment => segment.length > 0)
+}
+
 export const useCharacterStore = defineStore('character', () => {
   // ===== 状态 =====
   const characters = ref<CharacterData[]>([])
@@ -130,7 +139,10 @@ export const useCharacterStore = defineStore('character', () => {
 
       const targetField = fieldMap[fieldName]
       if (targetField) {
-        if (fieldName === 'alternate_greetings' || fieldName === 'tags') {
+        if (fieldName === 'alternate_greetings') {
+          const values = parseAlternateGreetingSegments(fieldValue)
+          ;(character.card.data as any)[targetField] = values
+        } else if (fieldName === 'tags') {
           // 处理数组类型字段
           const values = fieldValue.split('\n').map(v => v.trim()).filter(v => v.length > 0)
           ;(character.card.data as any)[targetField] = values

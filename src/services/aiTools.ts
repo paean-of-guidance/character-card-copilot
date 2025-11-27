@@ -109,7 +109,7 @@ export class AIToolsService {
       creator_notes?: string;
       system_prompt?: string;
       post_history_instructions?: string;
-      alternate_greetings?: string; // 用换行分隔
+      alternate_greetings?: string; // 使用 <START_ALT> 标记每段
       tags?: string; // 用逗号分隔
       creator?: string;
       character_version?: string;

@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
+const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
+
 /// 角色编辑工具
 pub struct EditCharacterTool;
 
@@ -16,7 +18,7 @@ impl AIToolTrait for EditCharacterTool {
     }
 
     fn description(&self) -> &'static str {
-        "直接编辑角色卡字段。使用方法：将要更新的字段作为参数传入，例如要更新description字段，就直接传入description参数。不需要指定角色名称，系统会自动使用当前角色。支持的参数：name, description, personality, scenario, first_mes, mes_example, creator_notes, system_prompt, post_history_instructions, alternate_greetings(换行分隔), tags(逗号分隔), creator, character_version"
+        "直接编辑角色卡字段。使用方法：将要更新的字段作为参数传入，例如要更新description字段，就直接传入description参数。不需要指定角色名称，系统会自动使用当前角色。支持的参数：name, description, personality, scenario, first_mes, mes_example, creator_notes, system_prompt, post_history_instructions, alternate_greetings(使用<START_ALT>标记每段), tags(逗号分隔), creator, character_version"
     }
 
     fn category(&self) -> &'static str {
@@ -111,7 +113,7 @@ impl AIToolTrait for EditCharacterTool {
                     }
                     "alternate_greetings" => {
                         tavern_card.data.alternate_greetings = value_str
-                            .split('\n')
+                            .split(ALTERNATE_GREETING_MARKER)
                             .map(|s| s.trim().to_string())
                             .filter(|s| !s.is_empty())
                             .collect();
@@ -337,7 +339,7 @@ impl AIToolTrait for EditCharacterTool {
             "alternate_greetings".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("备用问候语，多个问候语用换行分隔".to_string()),
+                description: Some("备用问候语，使用 <START_ALT> 标记每段开头".to_string()),
                 enum_values: None,
                 items: None,
                 properties: None,

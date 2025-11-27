@@ -9,6 +9,17 @@ const emit = defineEmits<{
     (e: "update-field", field: string, oldValue: any, newValue: any): void;
 }>();
 
+const ALTERNATE_GREETING_MARKER = "<START_ALT>";
+
+function splitAlternateGreetings(value: string) {
+    return value
+        ? value
+              .split(ALTERNATE_GREETING_MARKER)
+              .map((segment) => segment.trim())
+              .filter((segment) => segment.length > 0)
+        : [];
+}
+
 function onUpdateField(field: string, oldValue: any, newValue: any) {
     emit("update-field", field, oldValue, newValue);
 }
@@ -224,12 +235,14 @@ function onUpdateField(field: string, oldValue: any, newValue: any) {
                     onUpdateField(
                         'alternate_greetings',
                         props.fullCharacterData?.card?.data?.alternate_greetings || [],
-                        props.characterData.alternate_greetings.split('\n'),
+                        splitAlternateGreetings(
+                            props.characterData.alternate_greetings || '',
+                        )
                     )
                 "
                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
                 rows="3"
-                placeholder="备用开场白，用换行分隔多个问候语"
+                placeholder="备用开场白，使用 <START_ALT> 标记每段开头"
             ></textarea>
         </div>
 
@@ -250,7 +263,7 @@ function onUpdateField(field: string, oldValue: any, newValue: any) {
                         props.fullCharacterData?.card?.data?.tags || [],
                         props.characterData.tags
                             .split(',')
-                            .map((t) => t.trim()),
+                            .map((t: string) => t.trim())
                     )
                 "
                 type="text"
@@ -298,4 +311,3 @@ function onUpdateField(field: string, oldValue: any, newValue: any) {
         </div>
     </div>
 </template>
-
