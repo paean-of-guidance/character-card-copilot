@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TagInput from "./TagInput.vue";
+
 const props = defineProps<{
     characterData: any;
     fullCharacterData: any;
@@ -241,7 +243,7 @@ function onUpdateField(field: string, oldValue: any, newValue: any) {
                     )
                 "
                 class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 resize-none"
-                rows="3"
+                rows="8"
                 placeholder="备用开场白，使用 <START_ALT> 标记每段开头"
             ></textarea>
         </div>
@@ -255,20 +257,16 @@ function onUpdateField(field: string, oldValue: any, newValue: any) {
                     {{ props.tokenCounts.tags || 0 }} tokens
                 </span>
             </div>
-            <input
+            <TagInput
                 v-model="props.characterData.tags"
-                @blur="
+                placeholder="输入标签后按回车添加"
+                @change="
                     onUpdateField(
                         'tags',
                         props.fullCharacterData?.card?.data?.tags || [],
-                        props.characterData.tags
-                            .split(',')
-                            .map((t: string) => t.trim())
+                        $event,
                     )
                 "
-                type="text"
-                class="w-full bg-white border border-gray-200 rounded-lg px-4 py-3"
-                placeholder="角色标签，用逗号分隔"
             />
         </div>
 

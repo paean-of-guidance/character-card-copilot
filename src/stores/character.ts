@@ -143,8 +143,10 @@ export const useCharacterStore = defineStore('character', () => {
           const values = parseAlternateGreetingSegments(fieldValue)
           ;(character.card.data as any)[targetField] = values
         } else if (fieldName === 'tags') {
-          // 处理数组类型字段
-          const values = fieldValue.split('\n').map(v => v.trim()).filter(v => v.length > 0)
+          const values = fieldValue
+            .split(/,|\n/)
+            .map(v => v.trim())
+            .filter(v => v.length > 0)
           ;(character.card.data as any)[targetField] = values
         } else {
           ;(character.card.data as any)[targetField] = fieldValue

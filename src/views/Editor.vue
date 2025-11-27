@@ -254,7 +254,7 @@ async function updateEditorFromCharacterData(incomingCharacterData: any) {
             alternate_greetings: formatAlternateGreetingsForInput(
                 cardData.alternate_greetings,
             ),
-            tags: cardData.tags?.join(", ") || "",
+            tags: cardData.tags ? [...cardData.tags] : [],
             creator: cardData.creator || "",
             character_version: cardData.character_version || "",
         };
@@ -328,7 +328,7 @@ const characterData = ref({
     system_prompt: "",
     post_history_instructions: "",
     alternate_greetings: "",
-    tags: "",
+    tags: [] as string[],
     creator: "",
     character_version: "",
 });
@@ -372,7 +372,7 @@ async function loadCharacterData(uuid: string) {
                 alternate_greetings: formatAlternateGreetingsForInput(
                     character.card.data.alternate_greetings,
                 ),
-                tags: character.card.data.tags.join(", "),
+                tags: [...character.card.data.tags],
                 creator: character.card.data.creator,
                 character_version: character.card.data.character_version,
             };
@@ -397,6 +397,12 @@ async function updateField(
     const normalizeValue = (value: string | string[]) => {
         if (fieldName === "alternate_greetings") {
             return serializeAlternateGreetingsValue(value);
+        }
+        if (fieldName === "tags") {
+            if (Array.isArray(value)) {
+                return value.join(",");
+            }
+            return value || "";
         }
         if (Array.isArray(value)) {
             return value.join("\n");
@@ -479,7 +485,7 @@ watch(
         () => characterData.value.system_prompt,
         () => characterData.value.post_history_instructions,
         () => characterData.value.alternate_greetings,
-        () => characterData.value.tags,
+        () => characterData.value.tags.join(","),
     ],
     () => {
         updateTokenCount("description", characterData.value.description);
@@ -497,7 +503,7 @@ watch(
             "alternate_greetings",
             characterData.value.alternate_greetings,
         );
-        updateTokenCount("tags", characterData.value.tags);
+        updateTokenCount("tags", characterData.value.tags.join(", "));
     },
     { immediate: true },
 );
