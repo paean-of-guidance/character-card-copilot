@@ -5,6 +5,7 @@ mod file_utils;
 mod character_storage;
 mod api_config;
 mod ai_config;
+mod backend;
 mod ai_tools;
 mod ai_chat;
 mod chat_history;
