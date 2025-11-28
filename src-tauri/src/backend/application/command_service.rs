@@ -1,18 +1,13 @@
 use crate::backend::application::event_bus::EventBus;
-use crate::command_system::builtin::ClearCommand;
 use crate::command_system::command::{CommandContext, CommandMetadata, CommandResult};
 use crate::command_system::registry::COMMAND_REGISTRY;
-use std::sync::Arc;
 
 pub struct CommandService;
 
 impl CommandService {
     pub async fn initialize() {
-        COMMAND_REGISTRY
-            .register(Arc::new(ClearCommand::new()))
-            .await;
-
-        println!("✅ 命令系统初始化完成，已注册 1 个命令");
+        // 目前命令注册逻辑由 loader 负责，此处保持扩展点
+        println!("ℹ️ CommandService 初始化完成，等待加载内置/动态命令");
     }
 
     fn build_context(app_handle: &tauri::AppHandle) -> CommandContext {

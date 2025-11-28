@@ -1,10 +1,13 @@
 use crate::backend::application::command_service::CommandService;
 use crate::command_system::command::{CommandMetadata, CommandResult};
+use crate::command_system::loader;
 
 /// 初始化命令系统
 /// 在应用启动时调用，注册所有内置命令
 pub async fn initialize_command_system() {
     CommandService::initialize().await;
+    let count = loader::register_builtin_commands().await;
+    println!("✅ 命令系统初始化完成，已注册 {} 个内置命令", count);
 }
 
 /// 获取可用命令列表
