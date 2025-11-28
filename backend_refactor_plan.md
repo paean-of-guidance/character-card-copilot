@@ -39,7 +39,7 @@ src-tauri/src/backend
 | 阶段 | 目标 | 负责人 | 状态 | 备注 |
 | --- | --- | --- | --- | --- |
 | 0 | 编写文档、盘点依赖、确认目录结构 |  | ☑ 已完成 | 本文档 + 架构图，输出依赖清单 |
-| 1 | domain 层拆分：会话、命令、事件 payload |  | ⏳ 进行中 | 已迁移 backend/domain/sessions（config、session）与 events/payloads |
+| 1 | domain 层拆分：会话、命令、事件 payload |  | ☑ 已完成 | sessions + events/payloads + commands/models 已迁移 |
 | 2 | application 层服务化：SessionService、CommandService、ToolService、EventBus |  | ☐ 未开始 | 需要补测试，保留旧 API 调用 |
 | 3 | infrastructure 层瘦身：Tauri 命令文件拆分、EventEmitter 适配重写 |  | ☐ 未开始 | 仅做参数解析 + 调用服务 |
 | 4 | 命令系统模块化：注册机制、builtin 重构、配置化 |  | ☐ 未开始 | 计划引入 once_cell / inventory |
