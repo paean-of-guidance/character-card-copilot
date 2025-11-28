@@ -1,2 +1,1 @@
-//! 事件领域模型占位
-
+pub mod payloads;
