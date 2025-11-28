@@ -26,7 +26,7 @@ use ai_chat::{AIChatService, ChatCompletionRequest, ChatCompletionResponse, Chat
 use tools::ToolRegistry;
 use chat_history::{ChatHistoryManager, ChatMessage};
 use character_state::{set_active_character, get_active_character, clear_active_character, has_active_character};
-use character_session::{
+use backend::infrastructure::tauri::session_commands::{
     load_character_session,
     send_chat_message,
     unload_character_session,
