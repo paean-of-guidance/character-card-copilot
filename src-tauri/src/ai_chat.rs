@@ -12,6 +12,7 @@ use async_openai::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::backend::application::event_bus::EventBus;
 
 use super::api_config::ApiConfig;
 
@@ -505,7 +506,7 @@ impl AIChatService {
                                         .unwrap_or(0);
 
                                     // 发送工具执行事件
-                                    if let Err(e) = crate::events::EventEmitter::send_tool_executed(
+                                    if let Err(e) = EventBus::tool_executed(
                                         app_handle,
                                         &character_uuid,
                                         &tool_call.function.name,
@@ -530,7 +531,7 @@ impl AIChatService {
                                     messages.push(tool_message);
                                 } else {
                                     // 工具执行失败
-                                    if let Err(e) = crate::events::EventEmitter::send_tool_executed(
+                                    if let Err(e) = EventBus::tool_executed(
                                         app_handle,
                                         &character_uuid,
                                         &tool_call.function.name,

@@ -1,6 +1,7 @@
 use super::AIToolTrait;
 use crate::ai_tools::{ToolCallRequest, ToolResult};
 use crate::ai_chat::{ChatTool, ToolFunction, ToolParameters, ToolParameter as ChatToolParameter};
+use crate::backend::application::event_bus::EventBus;
 use crate::character_storage::CharacterStorage;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -179,7 +180,7 @@ impl AIToolTrait for EditCharacterTool {
                     };
 
                 // ✅ 使用标准事件发送方法（包含完整的 character_data）
-                if let Err(e) = crate::events::EventEmitter::send_character_updated(
+                if let Err(e) = EventBus::character_updated(
                     app_handle,
                     &character_uuid,
                     &updated_character_data,

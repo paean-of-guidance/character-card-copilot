@@ -1,6 +1,7 @@
+use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::sessions::session::SessionInfo;
 use crate::character_session::{CharacterSession, SESSION_MANAGER};
-use crate::events::{EventEmitter, SessionUnloadReason};
+use crate::events::SessionUnloadReason;
 use crate::tools::ToolRegistry;
 use tauri::AppHandle;
 
@@ -16,8 +17,8 @@ impl SessionService {
         let character_data = session.character_data.clone();
         let chat_history = session.chat_history.clone();
 
-        EventEmitter::send_character_loaded(app_handle, &session.uuid, &character_data)?;
-        EventEmitter::send_chat_history_loaded(app_handle, &session.uuid, &chat_history)?;
+        EventBus::character_loaded(app_handle, &session.uuid, &character_data)?;
+        EventBus::chat_history_loaded(app_handle, &session.uuid, &chat_history)?;
 
         Ok(session.get_session_info())
     }
@@ -32,7 +33,7 @@ impl SessionService {
 
         let user_message = session.add_user_message(message);
 
-        EventEmitter::send_message_sent(app_handle, &session.uuid, &user_message)?;
+        EventBus::message_sent(app_handle, &session.uuid, &user_message)?;
 
         session
             .save_history(app_handle)
@@ -62,7 +63,7 @@ impl SessionService {
             println!("会话 {} 已卸载", uuid);
 
             let session_info = session.get_session_info();
-            if let Err(e) = EventEmitter::send_session_unloaded(
+            if let Err(e) = EventBus::session_unloaded(
                 app_handle,
                 &uuid,
                 &session_info,
@@ -236,7 +237,7 @@ impl SessionService {
             )
             .map_err(|e| format!("构建上下文失败: {}", e))?;
 
-        EventEmitter::send_context_built(app_handle, &session.uuid, &context_result)?;
+        EventBus::context_built(app_handle, &session.uuid, &context_result)?;
 
         let mut ai_chat_messages = Vec::new();
 
@@ -473,7 +474,7 @@ impl SessionService {
                         .collect()
                 });
 
-        EventEmitter::send_message_received(
+        EventBus::message_received(
             app_handle,
             &session.uuid,
             &ai_response,
@@ -488,9 +489,9 @@ impl SessionService {
             budget_utilization: (ai_response_result.usage.total_tokens as f64 / 102400.0 * 100.0),
         };
 
-        EventEmitter::send_token_stats(app_handle, &session.uuid, token_stats)?;
+        EventBus::token_stats(app_handle, &session.uuid, token_stats)?;
 
-        EventEmitter::send_progress(
+        EventBus::progress(
             app_handle,
             &session.uuid,
             operation_type,
@@ -508,4 +509,3 @@ impl SessionService {
         Ok(())
     }
 }
-

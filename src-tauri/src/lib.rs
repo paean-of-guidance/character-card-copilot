@@ -23,7 +23,7 @@ use api_config::{ApiConfigService, ApiConfig, CreateApiRequest, UpdateApiRequest
 use ai_config::{AIConfigService, AIRole};
 use ai_tools::{ToolCallRequest, ToolResult};
 use ai_chat::{AIChatService, ChatCompletionRequest, ChatCompletionResponse, ChatTool};
-use tools::ToolRegistry;
+use backend::application::tool_service::ToolService;
 use chat_history::{ChatHistoryManager, ChatMessage};
 use character_state::{set_active_character, get_active_character, clear_active_character, has_active_character};
 use backend::infrastructure::tauri::session_commands::{
@@ -254,22 +254,22 @@ async fn get_all_ai_roles(app_handle: tauri::AppHandle) -> Result<Vec<(String, A
 
 #[tauri::command]
 async fn get_available_tools() -> Result<Vec<ChatTool>, String> {
-    Ok(ToolRegistry::get_available_tools_global())
+    Ok(ToolService::get_available_tools())
 }
 
 #[tauri::command]
 async fn get_tools_by_category(category: String) -> Result<Vec<ChatTool>, String> {
-    Ok(ToolRegistry::get_tools_by_category_global(&category))
+    Ok(ToolService::get_tools_by_category(&category))
 }
 
 #[tauri::command]
 async fn execute_tool_call(app_handle: tauri::AppHandle, request: ToolCallRequest) -> Result<ToolResult, String> {
-    Ok(ToolRegistry::execute_tool_call_global(&app_handle, &request).await)
+    Ok(ToolService::execute_tool_call(&app_handle, request).await)
 }
 
 #[tauri::command]
 async fn get_tool_categories() -> Result<Vec<&'static str>, String> {
-    Ok(ToolRegistry::get_tool_categories_global())
+    Ok(ToolService::get_tool_categories())
 }
 
 // ====================== AI聊天相关命令 ======================
