@@ -1,3 +1,4 @@
+use crate::backend::domain::{SessionInfo, SessionStatus};
 use crate::character_storage::CharacterData;
 use crate::chat_history::{ChatHistoryManager, ChatMessage};
 use chrono::{DateTime, Utc};
@@ -5,9 +6,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
-
-pub use crate::backend::domain::sessions::config::{ContextBuilderOptions, TokenBudget};
-pub use crate::backend::domain::sessions::session::{SessionInfo, SessionStatus};
 
 /// CharacterSession - 后端状态管理的核心结构
 #[derive(Debug, Clone)]

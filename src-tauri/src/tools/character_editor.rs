@@ -2,6 +2,7 @@ use super::AIToolTrait;
 use crate::ai_tools::{ToolCallRequest, ToolResult};
 use crate::ai_chat::{ChatTool, ToolFunction, ToolParameters, ToolParameter as ChatToolParameter};
 use crate::backend::application::event_bus::EventBus;
+use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::CharacterStorage;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -184,7 +185,7 @@ impl AIToolTrait for EditCharacterTool {
                     app_handle,
                     &character_uuid,
                     &updated_character_data,
-                    crate::events::CharacterUpdateType::BasicInfo,
+                    CharacterUpdateType::BasicInfo,
                 ) {
                     eprintln!("发送角色更新事件失败: {}", e);
                 }

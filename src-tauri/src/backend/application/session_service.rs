@@ -1,7 +1,6 @@
 use crate::backend::application::event_bus::EventBus;
-use crate::backend::domain::sessions::session::SessionInfo;
+use crate::backend::domain::{SessionInfo, SessionUnloadReason, TokenUsageStats};
 use crate::character_session::{CharacterSession, SESSION_MANAGER};
-use crate::events::SessionUnloadReason;
 use crate::tools::ToolRegistry;
 use tauri::AppHandle;
 
@@ -481,7 +480,7 @@ impl SessionService {
             converted_intermediate_msgs,
         )?;
 
-        let token_stats = crate::events::TokenUsageStats {
+        let token_stats = TokenUsageStats {
             prompt_tokens: ai_response_result.usage.prompt_tokens as usize,
             completion_tokens: ai_response_result.usage.completion_tokens as usize,
             total_tokens: ai_response_result.usage.total_tokens as usize,

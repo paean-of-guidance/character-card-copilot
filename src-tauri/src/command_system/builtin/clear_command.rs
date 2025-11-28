@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use crate::backend::application::event_bus::EventBus;
+use crate::backend::domain::{CommandCategory, CommandMetadata, CommandResult};
 use crate::command_system::command::*;
 use crate::character_session::SESSION_MANAGER;
 use crate::chat_history::ChatHistoryManager;

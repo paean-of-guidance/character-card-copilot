@@ -1,14 +1,22 @@
-use crate::character_session::SessionInfo;
+use crate::backend::domain::{
+    CharacterLoadedPayload,
+    CharacterUpdatedPayload,
+    CharacterUpdateType,
+    ChatHistoryLoadedPayload,
+    ContextBuiltPayload,
+    MessageReceivedPayload,
+    MessageSentPayload,
+    SessionInfo,
+    SessionUnloadReason,
+    SessionUnloadedPayload,
+    TokenStatsPayload,
+    TokenUsageStats,
+    ToolExecutedPayload,
+};
 use crate::character_storage::CharacterData;
 use crate::chat_history::ChatMessage;
 use crate::context_builder::BuiltContextResult;
 use tauri::{AppHandle, Emitter};
-
-pub use crate::backend::domain::events::payloads::{
-    CharacterLoadedPayload, CharacterUpdatedPayload, CharacterUpdateType, ChatHistoryLoadedPayload,
-    ContextBuiltPayload, MessageReceivedPayload, MessageSentPayload, SessionUnloadReason,
-    SessionUnloadedPayload, TokenStatsPayload, TokenUsageStats, ToolExecutedPayload,
-};
 
 /// 事件发送器 - 提供统一的事件发送接口
 pub struct EventEmitter;

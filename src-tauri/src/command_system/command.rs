@@ -1,8 +1,5 @@
 use async_trait::async_trait;
-
-pub use crate::backend::domain::commands::models::{
-    CommandCategory, CommandMetadata, CommandResult,
-};
+use crate::backend::domain::{CommandMetadata, CommandResult};
 
 /// 命令执行上下文
 #[derive(Debug, Clone)]

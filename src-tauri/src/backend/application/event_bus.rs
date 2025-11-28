@@ -1,9 +1,13 @@
-use crate::backend::domain::events::payloads::TokenUsageStats;
-use crate::backend::domain::sessions::session::SessionInfo;
+use crate::backend::domain::{
+    CharacterUpdateType,
+    SessionInfo,
+    SessionUnloadReason,
+    TokenUsageStats,
+};
 use crate::character_storage::CharacterData;
 use crate::chat_history::ChatMessage;
 use crate::context_builder::BuiltContextResult;
-use crate::events::{CharacterUpdateType, EventEmitter, SessionUnloadReason};
+use crate::events::EventEmitter;
 use serde_json::Value;
 
 pub struct EventBus;

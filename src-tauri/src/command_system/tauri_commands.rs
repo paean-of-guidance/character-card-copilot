@@ -1,5 +1,5 @@
 use crate::backend::application::command_service::CommandService;
-use crate::command_system::command::{CommandMetadata, CommandResult};
+use crate::backend::domain::{CommandMetadata, CommandResult};
 use crate::command_system::loader;
 
 /// 初始化命令系统

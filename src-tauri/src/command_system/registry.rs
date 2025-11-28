@@ -1,4 +1,5 @@
-use super::command::{CommandContext, CommandExecutor, CommandMetadata, CommandResult};
+use crate::backend::domain::{CommandMetadata, CommandResult};
+use super::command::{CommandContext, CommandExecutor};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

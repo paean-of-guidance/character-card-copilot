@@ -1,6 +1,6 @@
 use crate::chat_history::ChatMessage;
 use crate::character_storage::{CharacterData, CharacterBook};
-use crate::character_session::{ContextBuilderOptions, TokenBudget};
+use crate::backend::domain::{ContextBuilderOptions, TokenBudget};
 use crate::token_counter::get_token_counter;
 use serde::{Deserialize, Serialize};
 

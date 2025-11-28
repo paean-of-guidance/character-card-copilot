@@ -1,6 +1,6 @@
 use crate::backend::application::event_bus::EventBus;
+use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::{CharacterData, CharacterStorage, TavernCardV2};
-use crate::events::CharacterUpdateType;
 
 const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
 
@@ -138,4 +138,3 @@ pub async fn import_character_card_from_bytes(
 ) -> Result<CharacterData, String> {
     CharacterStorage::import_character_card_from_bytes(&app_handle, &file_data, &file_name)
 }
-

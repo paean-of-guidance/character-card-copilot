@@ -1,5 +1,6 @@
 use crate::backend::application::event_bus::EventBus;
-use crate::command_system::command::{CommandContext, CommandMetadata, CommandResult};
+use crate::backend::domain::{CommandMetadata, CommandResult};
+use crate::command_system::command::CommandContext;
 use crate::command_system::registry::COMMAND_REGISTRY;
 
 pub struct CommandService;
