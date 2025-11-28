@@ -43,7 +43,7 @@ src-tauri/src/backend
 | 2 | application 层服务化：SessionService、CommandService、ToolService、EventBus |  | ☑ 已完成 | SessionService + CommandService + ToolService + EventBus 接入，命令/工具API均改调服务 |
 | 3 | infrastructure 层瘦身：Tauri 命令文件拆分、EventEmitter 适配重写 |  | ☑ 已完成 | lib.rs 命令迁出至 backend/infrastructure/tauri，Tauri 层仅负责参数解析 |
 | 4 | 命令系统模块化：注册机制、builtin 重构、配置化 |  | ☑ 已完成 | builtin manifest + loader 引入，支持 env 禁用命令 |
-| 5 | 清理遗留：删除旧模块、统一日志与 tracing、补全文档 |  | ☐ 未开始 | 收尾，确保 `cargo clippy` 通过 |
+| 5 | 清理遗留：删除旧模块、统一日志与 tracing、补全文档 |  | ⏳ 进行中 | 已迁移至 2018+ 模块写法（移除 mod.rs），后续补日志/文档 |
 
 ## 近期 TODO（滚动维护）
 - [ ] 输出 Session/Command 依赖图（使用 mermaid 或文字描述）

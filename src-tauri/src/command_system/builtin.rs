@@ -40,3 +40,4 @@ static DISABLED_COMMANDS: Lazy<HashSet<String>> = Lazy::new(|| {
 pub fn is_enabled(id: &str) -> bool {
     !DISABLED_COMMANDS.contains(&id.to_lowercase())
 }
+
