@@ -10,6 +10,7 @@ use async_openai::{
     },
     Client,
 };
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::backend::application::event_bus::EventBus;
@@ -134,11 +135,16 @@ pub struct ChatCompletionRequest {
 pub struct ToolParameter {
     #[serde(rename = "type")]
     pub param_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(rename = "enum")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<ToolParameter>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<HashMap<String, ToolParameter>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<Vec<String>>,
 }
 
@@ -146,7 +152,9 @@ pub struct ToolParameter {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolFunction {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<ToolParameters>,
 }
 
@@ -156,6 +164,7 @@ pub struct ToolParameters {
     #[serde(rename = "type")]
     pub param_type: String,
     pub properties: HashMap<String, ToolParameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<Vec<String>>,
 }
 
@@ -175,14 +184,7 @@ impl AIChatService {
     async fn create_client_with_config(
         api_config: &ApiConfig,
     ) -> Result<Client<OpenAIConfig>, String> {
-        // 构建基础 URL，确保以 /v1 结尾
-        let base_url = if api_config.endpoint.ends_with("/v1") {
-            api_config.endpoint.clone()
-        } else if api_config.endpoint.ends_with("/v1/") {
-            api_config.endpoint.trim_end_matches('/').to_string()
-        } else {
-            format!("{}/v1", api_config.endpoint.trim_end_matches('/'))
-        };
+        let base_url = Self::normalize_api_base(&api_config.endpoint);
 
         // 创建自定义配置
         let config = OpenAIConfig::new()
@@ -461,13 +463,23 @@ impl AIChatService {
                 .build()
                 .map_err(|e| format!("请求build错误: {}", e))?;
 
-            let response = client
-                .chat()
-                .create(openai_request)
-                .await
-                .map_err(|e| format!("API请求失败: {}", e))?;
+            let response = client.chat().create(openai_request).await;
 
-            let our_response = Self::convert_response_from_openai(response);
+            let our_response = match response {
+                Ok(resp) => Self::convert_response_from_openai(resp),
+                Err(err) => {
+                    let err_msg = err.to_string();
+                    if err_msg.contains("failed to deserialize api response") {
+                        eprintln!(
+                            "⚠️ async-openai 解析响应失败，尝试回退至 reqwest: {}",
+                            err_msg
+                        );
+                        Self::send_chat_request_via_http(api_config, request).await?
+                    } else {
+                        return Err(format!("API请求失败: {}", err_msg));
+                    }
+                }
+            };
 
             // 检查是否有工具调用需要执行
             if let Some(choice) = our_response.choices.first() {
@@ -665,5 +677,117 @@ impl AIChatService {
         result.push_str("data: [DONE]\n\n");
 
         Ok(result)
+    }
+
+    fn normalize_api_base(endpoint: &str) -> String {
+        let trimmed = endpoint.trim_end_matches('/');
+        if trimmed.ends_with("/v1") {
+            trimmed.to_string()
+        } else {
+            format!("{}/v1", trimmed)
+        }
+    }
+
+    async fn send_chat_request_via_http(
+        api_config: &ApiConfig,
+        request: &ChatCompletionRequest,
+    ) -> Result<ChatCompletionResponse, String> {
+        let base_url = Self::normalize_api_base(&api_config.endpoint);
+        let url = format!("{}/chat/completions", base_url);
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&url)
+            .bearer_auth(&api_config.key)
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| format!("API请求失败: {}", e))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("读取API响应失败: {}", e))?;
+
+        if status.is_success() {
+            serde_json::from_str::<ChatCompletionResponse>(&body)
+                .map_err(|e| format!("API响应解析失败: {} - {}", e, body))
+        } else {
+            eprintln!(
+                "⚠️ API返回非成功状态，status={}, body={}",
+                status.as_u16(),
+                body
+            );
+            Err(Self::format_api_error(status, &body))
+        }
+    }
+
+    fn format_api_error(status: StatusCode, body: &str) -> String {
+        let detail = Self::extract_error_details(body)
+            .unwrap_or_else(|| "未返回错误信息".to_string());
+        format!("API返回错误 (HTTP {}): {}", status.as_u16(), detail)
+    }
+
+    fn extract_error_details(body: &str) -> Option<String> {
+        if body.trim().is_empty() {
+            return None;
+        }
+
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+            if let Some(error_obj) = value.get("error") {
+                if let Some(parsed) = Self::parse_error_object(error_obj) {
+                    return Some(parsed);
+                }
+            }
+
+            if let Some(message) = value.get("message").and_then(|v| v.as_str()) {
+                let mut result = message.to_string();
+                if let Some(code) = value.get("code").and_then(Self::json_value_to_string) {
+                    result.push_str(&format!(" (code {})", code));
+                }
+                return Some(result);
+            }
+
+            return Some(value.to_string());
+        }
+
+        Some(body.trim().to_string())
+    }
+
+    fn parse_error_object(value: &serde_json::Value) -> Option<String> {
+        let message = value.get("message").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let code = value.get("code").and_then(Self::json_value_to_string);
+        let err_type = value.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if message.is_none() && code.is_none() && err_type.is_none() {
+            return Some(value.to_string());
+        }
+
+        let mut segments = Vec::new();
+        if let Some(msg) = message {
+            segments.push(msg);
+        }
+
+        let mut meta = Vec::new();
+        if let Some(c) = code {
+            meta.push(format!("code {}", c));
+        }
+        if let Some(t) = err_type {
+            meta.push(t);
+        }
+        if !meta.is_empty() {
+            segments.push(format!("({})", meta.join(", ")));
+        }
+
+        Some(segments.join(" "))
+    }
+
+    fn json_value_to_string(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            serde_json::Value::Bool(b) => Some(b.to_string()),
+            _ => None,
+        }
     }
 }

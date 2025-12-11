@@ -4,7 +4,6 @@ import { useRoute, useRouter } from "vue-router";
 import { useAppStore } from "@/stores/app";
 import { useCharacterStore } from "@/stores/character";
 import {
-    updateCharacterField,
     deleteCharacter as deleteCharacterByUUID,
     exportCharacterCard,
 } from "@/services/characterStorage";
@@ -340,7 +339,11 @@ async function loadCharacterData(uuid: string) {
     isLoading.value = true;
     try {
         // ✅ 使用 Store 加载（带缓存）
-        const character = await characterStore.getCharacterByUUID(uuid);
+        let character = await characterStore.getCharacterByUUID(uuid);
+        if (!character) {
+            await characterStore.refreshCharacters();
+            character = await characterStore.getCharacterByUUID(uuid);
+        }
         if (character) {
             characterUUID.value = uuid;
             backgroundPath.value = character.backgroundPath || "";
@@ -416,7 +419,11 @@ async function updateField(
     // 只有值真正改变时才更新
     if (oldStr !== newStr) {
         try {
-            await updateCharacterField(characterUUID.value, fieldName, newStr);
+            await characterStore.updateCharacterField(
+                characterUUID.value,
+                fieldName,
+                newStr,
+            );
             console.log(`字段 ${fieldName} 已保存`);
         } catch (error) {
             console.error(`更新字段 ${fieldName} 失败:`, error);
