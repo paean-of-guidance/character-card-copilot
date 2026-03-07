@@ -8,7 +8,7 @@ pub struct CommandService;
 impl CommandService {
     pub async fn initialize() {
         // 目前命令注册逻辑由 loader 负责，此处保持扩展点
-        println!("ℹ️ CommandService 初始化完成，等待加载内置/动态命令");
+        crate::debug_log!("ℹ️ CommandService 初始化完成，等待加载内置/动态命令");
     }
 
     fn build_context(app_handle: &tauri::AppHandle) -> CommandContext {

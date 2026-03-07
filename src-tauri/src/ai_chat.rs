@@ -471,7 +471,7 @@ impl AIChatService {
                     let err_msg = err.to_string();
                     let lower = err_msg.to_lowercase();
                     if lower.contains("deserialize") {
-                        eprintln!(
+                        crate::debug_warn!(
                             "⚠️ async-openai 解析响应失败，尝试回退至 reqwest 捕获原始响应: {}",
                             err_msg
                         );
@@ -645,42 +645,6 @@ impl AIChatService {
         }
     }
 
-    /// 创建流式聊天完成请求 (暂时简化实现)
-    pub async fn create_streaming_chat_completion(
-        api_config: &ApiConfig,
-        request: &ChatCompletionRequest,
-    ) -> Result<String, String> {
-        // 对于流式响应，我们可以使用 async-openai 的流式功能
-        // 但为了保持兼容性，暂时返回非流式结果的字符串格式
-        let response = Self::create_chat_completion(api_config, request, None).await?;
-
-        // 转换为 SSE 格式
-        let mut result = String::new();
-        for choice in &response.choices {
-            let chunk = format!(
-                "data: {}\n\n",
-                serde_json::json!({
-                    "id": response.id,
-                    "object": "chat.completion.chunk",
-                    "created": response.created,
-                    "model": response.model,
-                    "choices": [{
-                        "index": choice.index,
-                        "delta": {
-                            "role": "assistant",
-                            "content": choice.message.content
-                        },
-                        "finish_reason": choice.finish_reason
-                    }]
-                })
-            );
-            result.push_str(&chunk);
-        }
-        result.push_str("data: [DONE]\n\n");
-
-        Ok(result)
-    }
-
     fn normalize_api_base(endpoint: &str) -> String {
         let trimmed = endpoint.trim_end_matches('/');
         if trimmed.ends_with("/v1") {
@@ -713,8 +677,8 @@ impl AIChatService {
             .map_err(|e| format!("读取API响应失败: {}", e))?;
 
         if debug_log_raw {
-            eprintln!("=== 回退 HTTP 原始响应 ===");
-            eprintln!("{}", body);
+            crate::debug_warn!("=== 回退 HTTP 原始响应 ===");
+            crate::debug_warn!("{}", body);
         }
 
         if status.is_success() {
@@ -726,7 +690,7 @@ impl AIChatService {
                 }
             }
         } else {
-            eprintln!(
+            crate::debug_warn!(
                 "⚠️ API返回非成功状态，status={}, body={}",
                 status.as_u16(),
                 body
@@ -811,18 +775,18 @@ impl AIChatService {
             body.to_string()
         };
 
-        eprintln!("=== 原始响应（解析失败） ===");
-        eprintln!("{}", truncated);
+        crate::debug_warn!("=== 原始响应（解析失败） ===");
+        crate::debug_warn!("{}", truncated);
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
             if let Ok(pretty) = serde_json::to_string_pretty(&json) {
-                eprintln!("=== 原始响应 JSON 格式化 ===");
-                eprintln!("{}", pretty);
+                crate::debug_warn!("=== 原始响应 JSON 格式化 ===");
+                crate::debug_warn!("{}", pretty);
             }
 
             if let Some(choices) = json.get("choices") {
-                eprintln!("=== choices 片段 ===");
-                eprintln!("{}", choices);
+                crate::debug_warn!("=== choices 片段 ===");
+                crate::debug_warn!("{}", choices);
             }
         }
     }

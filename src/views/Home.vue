@@ -109,8 +109,8 @@ async function handleImportCharacter() {
 </script>
 
 <template>
-    <div class="home">
-        <div v-if="loading" class="flex items-center justify-center h-64 w-max">
+    <div class="home h-full min-h-0 w-full overflow-y-auto">
+        <div v-if="loading" class="flex h-full min-h-64 items-center justify-center">
             <div class="text-gray-600">加载中...</div>
         </div>
 
@@ -130,9 +130,14 @@ async function handleImportCharacter() {
 </template>
 
 <style scoped>
+.home {
+    scrollbar-gutter: stable;
+}
+
 .character-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1.5rem;
+    align-content: start;
 }
 </style>

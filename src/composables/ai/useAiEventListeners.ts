@@ -16,6 +16,7 @@ import { ref, type Ref } from 'vue';
 import { listen } from '@tauri-apps/api/event';
 import { useAiStore } from '@/stores/ai';
 import { useChatStore } from '@/stores/chat';
+import { devLog } from '@/utils/logger';
 import type {
   CharacterLoadedPayload,
   ChatHistoryLoadedPayload,
@@ -60,11 +61,11 @@ export function useAiEventListeners(
    * 初始化所有后端事件监听器
    */
   async function setupListeners() {
-    console.log('初始化后端事件监听器...');
+    devLog('初始化后端事件监听器...');
 
     // 角色加载事件
     const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>('character-loaded', (event) => {
-      console.log('🎭 角色加载事件:', event.payload);
+      devLog('🎭 角色加载事件:', event.payload);
       const payload = event.payload;
       aiStore.updateSessionState(payload.uuid, true);
       isLoadingFromBackend.value = false;
@@ -72,7 +73,7 @@ export function useAiEventListeners(
 
     // 聊天历史加载事件
     const unlistenChatHistoryLoaded = await listen<ChatHistoryLoadedPayload>('chat-history-loaded', (event) => {
-      console.log('📚 聊天历史加载事件:', event.payload);
+      devLog('📚 聊天历史加载事件:', event.payload);
       const payload = event.payload;
 
       // 转换为前端消息格式
@@ -90,12 +91,12 @@ export function useAiEventListeners(
       chatStore.setChatHistory(payload.uuid, payload.chat_history);
       chatStore.setActiveCharacter(payload.uuid);
 
-      console.log(`从后端加载了 ${messages.value.length} 条聊天历史记录`);
+      devLog(`从后端加载了 ${messages.value.length} 条聊天历史记录`);
     });
 
     // 消息发送事件
     const unlistenMessageSent = await listen<MessageSentPayload>('message-sent', (event) => {
-      console.log('📤 消息发送事件:', event.payload);
+      devLog('📤 消息发送事件:', event.payload);
       const payload = event.payload;
 
       // 如果消息不在前端列表中，添加它
@@ -116,12 +117,12 @@ export function useAiEventListeners(
 
     // 消息接收事件
     const unlistenMessageReceived = await listen<MessageReceivedPayload>('message-received', (event) => {
-      console.log('📥 消息接收事件:', event.payload);
+      devLog('📥 消息接收事件:', event.payload);
       const payload = event.payload;
 
       // 如果有中间消息（工具调用流程），先插入它们
       if (payload.intermediate_messages && payload.intermediate_messages.length > 0) {
-        console.log(`🔄 插入 ${payload.intermediate_messages.length} 条中间消息（tool 调用流程）`);
+        devLog(`🔄 插入 ${payload.intermediate_messages.length} 条中间消息（tool 调用流程）`);
 
         const intermediateDisplayMessages = payload.intermediate_messages.map((msg, index) => ({
           id: `${msg.timestamp || Date.now()}_intermediate_${index}_${payload.uuid}`,
@@ -151,14 +152,14 @@ export function useAiEventListeners(
 
     // 上下文构建完成事件
     const unlistenContextBuilt = await listen<ContextBuiltPayload>('context-built', (event) => {
-      console.log('🔧 上下文构建完成事件:', event.payload);
+      devLog('🔧 上下文构建完成事件:', event.payload);
       const payload = event.payload;
       contextBuiltInfo.value = payload.context_result;
     });
 
     // 角色更新事件
     const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>('character-updated', (event) => {
-      console.log('🔄 角色更新事件:', event.payload);
+      devLog('🔄 角色更新事件:', event.payload);
     });
 
     // 工具执行事件
@@ -166,7 +167,7 @@ export function useAiEventListeners(
       const payload = event.payload;
 
       if (payload.success) {
-        console.log('✅ 工具执行成功:', {
+        devLog('✅ 工具执行成功:', {
           工具名称: payload.tool_name,
           执行时间: `${payload.execution_time_ms}ms`,
           结果: payload.result
@@ -182,7 +183,7 @@ export function useAiEventListeners(
 
     // 会话卸载事件
     const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>('session-unloaded', (event) => {
-      console.log('🚪 会话卸载事件:', event.payload);
+      devLog('🚪 会话卸载事件:', event.payload);
       const payload = event.payload;
 
       if (payload.uuid === aiStore.currentSessionUUID) {
@@ -209,13 +210,13 @@ export function useAiEventListeners(
 
     // Token统计事件
     const unlistenTokenStats = await listen<TokenStatsPayload>('token-stats', (event) => {
-      console.log('📊 Token统计事件:', event.payload);
+      devLog('📊 Token统计事件:', event.payload);
       aiStore.updateTokenStats(event.payload.token_usage);
     });
 
     // 进度事件
     const unlistenProgress = await listen<ProgressPayload>('progress', (event) => {
-      console.log('📈 进度事件:', event.payload);
+      devLog('📈 进度事件:', event.payload);
     });
 
     // 保存所有清理函数
@@ -233,14 +234,14 @@ export function useAiEventListeners(
       unlistenProgress,
     );
 
-    console.log('✅ 后端事件监听器初始化完成');
+    devLog('✅ 后端事件监听器初始化完成');
   }
 
   /**
    * 清理所有事件监听器
    */
   function cleanup() {
-    console.log('清理事件监听器...');
+    devLog('清理事件监听器...');
     eventUnlisteners.value.forEach(unlisten => {
       try {
         unlisten();
@@ -249,7 +250,7 @@ export function useAiEventListeners(
       }
     });
     eventUnlisteners.value = [];
-    console.log('✅ 事件监听器清理完成');
+    devLog('✅ 事件监听器清理完成');
   }
 
   return {

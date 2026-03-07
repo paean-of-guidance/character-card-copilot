@@ -17,6 +17,7 @@ mod png_utils;
 mod token_counter;
 mod tools;
 mod command_system;
+mod debug_log;
 
 use backend::infrastructure::tauri::{
     add_ai_role,
@@ -29,7 +30,6 @@ use backend::infrastructure::tauri::{
     create_api_config,
     create_character,
     create_chat_completion,
-    create_streaming_chat_completion,
     delete_ai_role,
     delete_api_config,
     delete_character,
@@ -131,7 +131,6 @@ pub fn run() {
             get_tool_categories,
             // AI聊天命令
             create_chat_completion,
-            create_streaming_chat_completion,
             // 聊天历史命令
             save_chat_message,
             load_chat_history,

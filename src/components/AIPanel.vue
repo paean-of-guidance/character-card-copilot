@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
-import { getAllApiConfigs } from "@/services/apiConfig";
-import type { ApiConfig, ChatMessage } from "@/types/api";
-import { AIConfigService, type AIRole } from "@/services/aiConfig";
+import { storeToRefs } from "pinia";
+import type { ChatMessage } from "@/types/api";
 import CommandPalette from "./CommandPalette.vue";
 import Modal from "./Modal.vue";
 import ToolExecutionCard from "./ToolExecutionCard.vue";
 import ChatInput from "./ai/ChatInput.vue";
 import MessageBubble from "./ai/MessageBubble.vue";
-import { backendCommandService } from "@/services/backendCommandService";
 import type { CommandMetadata } from "@/types/commands";
 import type { ModalOptions } from "@/utils/notification";
 import { useChatStore } from "@/stores/chat";
 import { useAiStore } from "@/stores/ai";
+import { useApiStore } from "@/stores/api";
 import {
     useAiEventListeners,
     type DisplayMessage,
 } from "@/composables/ai/useAiEventListeners";
 import { useMessageGrouping } from "@/composables/ai/useMessageGrouping";
 import { useNotification } from "@/composables/useNotification";
+import { devLog, devWarn } from "@/utils/logger";
 const { showErrorToast } = useNotification();
 
 // 组件props
@@ -38,6 +38,16 @@ const isVisible = ref(props.visible !== false);
 // 使用 Pinia Store 管理聊天状态
 const chatStore = useChatStore();
 const aiStore = useAiStore();
+const apiStore = useApiStore();
+const { enabledApis, defaultApi, selectedProfile } = storeToRefs(apiStore);
+const {
+    aiRoles,
+    currentRoleConfig,
+    defaultRole,
+    selectedRole: selectedRoleState,
+    currentSessionUUID,
+    isBackendSessionActive,
+} = storeToRefs(aiStore);
 
 // 对话相关状态 - 保持为 ref，但同步到 store
 const messages = ref<DisplayMessage[]>([]);
@@ -55,15 +65,19 @@ const { setupListeners, cleanup: cleanupEventListeners } = useAiEventListeners(
 
 // 输入内容（用于命令面板搜索）
 const userInput = ref("");
-
-const selectedApi = ref("");
-const apiConfigs = ref<ApiConfig[]>([]);
-
-// AI角色相关状态
-const selectedRole = ref("");
-const aiRoles = ref<Array<{ name: string; role: AIRole }>>([]);
-const currentRoleConfig = ref<AIRole | null>(null);
-const defaultRole = ref("");
+const apiConfigs = computed(() => enabledApis.value);
+const selectedApi = computed({
+    get: () => selectedProfile.value,
+    set: (value: string) => {
+        apiStore.selectApi(value || null);
+    },
+});
+const selectedRole = computed({
+    get: () => selectedRoleState.value,
+    set: (value: string) => {
+        void aiStore.selectRole(value);
+    },
+});
 
 // 聊天容器和输入框引用
 const chatMessagesRef = ref<HTMLElement>();
@@ -80,6 +94,10 @@ const filteredCommands = ref<CommandMetadata[]>([]);
 const commandSearchQuery = ref("");
 const modalOptions = ref<ModalOptions | null>(null);
 const pendingCommand = ref<CommandMetadata | null>(null);
+const COMMAND_SEARCH_DEBOUNCE_MS = 120;
+const COMMAND_REFRESH_DEBOUNCE_MS = 150;
+let commandSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let commandRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 使用消息分组 composable
 const groupedMessages = useMessageGrouping(messages);
@@ -95,28 +113,37 @@ const visible = computed(() => {
     return props.visible !== false && isVisible.value;
 });
 
+const commandAvailabilitySignature = computed(() => {
+    return `${currentSessionUUID.value}|${isBackendSessionActive.value}|${messages.value
+        .map((message) => message.role)
+        .join(",")}|${messages.value.length}`;
+});
+
+function hasCurrentCharacterSession(characterId: string | null): boolean {
+    return (
+        !!characterId &&
+        isBackendSessionActive.value &&
+        currentSessionUUID.value === characterId
+    );
+}
+
 // 加载API配置
 async function loadApiConfigs() {
     try {
-        const configs = await getAllApiConfigs();
-        // 过滤出已启用的配置
-        const enabledConfigs = configs.filter((config) => config.enabled);
+        await apiStore.loadAllApis();
 
-        // 将默认配置排在第一位
-        apiConfigs.value = enabledConfigs.sort((a, b) => {
-            if (a.default && !b.default) return -1;
-            if (!a.default && b.default) return 1;
-            return 0;
-        });
+        const hasSelectedEnabledApi = apiConfigs.value.some(
+            (config) => config.profile === selectedApi.value,
+        );
 
-        // 优先选择默认配置，如果没有默认配置则选择第一个
-        if (apiConfigs.value.length > 0 && !selectedApi.value) {
-            const defaultConfig = apiConfigs.value.find(
-                (config) => config.default,
-            );
-            selectedApi.value = defaultConfig
-                ? defaultConfig.profile
-                : apiConfigs.value[0].profile;
+        if (!hasSelectedEnabledApi) {
+            const preferredConfig =
+                (defaultApi.value?.enabled ? defaultApi.value : null) ??
+                apiConfigs.value[0];
+
+            if (preferredConfig) {
+                apiStore.selectApi(preferredConfig.profile);
+            }
         }
     } catch (error) {
         console.error("加载API配置失败:", error);
@@ -126,76 +153,43 @@ async function loadApiConfigs() {
 // 加载AI角色配置
 async function loadAIRoles() {
     try {
-        const config = await AIConfigService.getConfig();
-        defaultRole.value = config.default_role;
-
-        aiRoles.value = await AIConfigService.getAllRoles();
-
-        if (!selectedRole.value && config.default_role) {
-            selectedRole.value = config.default_role;
-        }
+        await aiStore.loadAIRoles();
     } catch (error) {
         console.error("加载AI角色配置失败:", error);
     }
 }
 
-// 更新当前角色配置
-async function updateCurrentRoleConfig() {
-    if (!selectedRole.value) {
-        currentRoleConfig.value = null;
-        return;
-    }
-
-    try {
-        const role = await AIConfigService.getRole(selectedRole.value);
-        currentRoleConfig.value = role;
-    } catch (error) {
-        console.error("获取角色配置失败:", error);
-    }
-}
-
-// 监听角色选择变化
-watch(selectedRole, () => {
-    updateCurrentRoleConfig();
-});
-
 // 发送消息（从 ChatInput 组件接收）
 async function handleSendMessage(message: string) {
     if (aiStore.isLoading) return;
 
+    const characterId = getCurrentCharacterId();
+
     // 检查是否有活跃的后端会话
-    if (!aiStore.isBackendSessionActive) {
-        const characterId = getCurrentCharacterId();
+    if (!hasCurrentCharacterSession(characterId)) {
         if (!characterId) {
             console.error("无法获取角色ID，无法发送消息");
             return;
         }
 
-        console.log("触发后端角色会话加载...");
+        devLog("触发后端角色会话加载...");
         isLoadingFromBackend.value = true;
         try {
-            await aiStore.loadCharacterSession(characterId);
-            // 等待角色加载事件完成后再发送消息
-            setTimeout(async () => {
-                if (aiStore.isBackendSessionActive) {
-                    await aiStore.sendChatMessage(message);
-                } else {
-                    console.error("后端会话加载失败");
-                    isLoadingFromBackend.value = false;
-                }
-            }, 500);
+            await aiStore.ensureCharacterSession(characterId);
         } catch (error) {
             console.error("加载角色会话失败:", error);
             isLoadingFromBackend.value = false;
+            return;
         }
-    } else {
-        // 直接发送消息
-        try {
-            await aiStore.sendChatMessage(message);
-        } catch (error) {
-            showErrorToast(`${error}`, "发送消息失败");
-            console.error("发送消息失败:", error);
-        }
+    }
+
+    isLoadingFromBackend.value = false;
+
+    try {
+        await aiStore.sendChatMessage(message);
+    } catch (error) {
+        showErrorToast(`${error}`, "发送消息失败");
+        console.error("发送消息失败:", error);
     }
 }
 
@@ -237,7 +231,7 @@ async function initializeChatHistory() {
         const characterId = getCurrentCharacterId();
 
         if (!characterId) {
-            console.warn("无法获取角色UUID");
+            devWarn("无法获取角色UUID");
             return;
         }
 
@@ -257,13 +251,13 @@ async function initializeChatHistory() {
                 name: msg.name,
             }));
 
-            console.log(
+            devLog(
                 `为角色 ${props.characterData.name} (ID: ${characterId}) 加载了 ${messages.value.length} 条聊天历史记录`,
             );
 
             // 自动滚动到底部显示最新消息 - 通过watch处理
         } else {
-            console.log(`角色 ${props.characterData.name} 暂无聊天历史记录`);
+            devLog(`角色 ${props.characterData.name} 暂无聊天历史记录`);
         }
     } catch (error) {
         console.error("初始化聊天历史记录失败:", error);
@@ -277,11 +271,12 @@ watch(
     async (newName, oldName) => {
         // 只在真正切换角色时才重新加载（跳过初始加载，由 onMounted 处理）
         if (newName && oldName && newName !== oldName) {
-            console.log(`角色切换: ${oldName} -> ${newName}`);
+            devLog(`角色切换: ${oldName} -> ${newName}`);
 
-            // 如果使用后端会话，重新加载会话
-            if (aiStore.isBackendSessionActive) {
-                const characterId = getCurrentCharacterId();
+            const characterId = getCurrentCharacterId();
+
+            // 如果已有后端会话，切换角色时重新加载目标角色会话
+            if (isBackendSessionActive.value) {
                 if (characterId) {
                     isLoadingFromBackend.value = true;
                     try {
@@ -338,7 +333,7 @@ async function deleteToolExecutionGroup(groupIndex: number) {
         return;
     }
 
-    console.log(
+    devLog(
         `🎯 删除工具调用组 [${groupIndex}]，起始消息索引: ${startIndex}`,
     );
     await deleteMessage(startIndex);
@@ -383,7 +378,7 @@ async function handleSaveEdit(messageId: string, newContent: string) {
                 messages.value[index].content = newContent;
                 messages.value[index].isEditing = false;
 
-                console.log(`✅ 已编辑消息 [${index}]`);
+                devLog(`✅ 已编辑消息 [${index}]`);
             } else {
                 // 内容没有变化，直接取消编辑状态
                 messages.value[index].isEditing = false;
@@ -443,7 +438,7 @@ async function deleteMessage(index: number) {
                 ) {
                     // 找到完整的工具调用链，删除整个链条
                     deleteStartIndex = toolStartIndex;
-                    console.log(
+                    devLog(
                         `🔗 检测到工具调用链: [${deleteStartIndex}] 到 [${deleteEndIndex}]`,
                     );
                 }
@@ -471,7 +466,7 @@ async function deleteMessage(index: number) {
                 messages.value[j].role === "assistant"
             ) {
                 deleteEndIndex = j;
-                console.log(
+                devLog(
                     `🔗 检测到工具调用链: [${deleteStartIndex}] 到 [${deleteEndIndex}]`,
                 );
             } else {
@@ -482,7 +477,7 @@ async function deleteMessage(index: number) {
         // 计算要删除的消息数量
         const deleteCount = deleteEndIndex - deleteStartIndex + 1;
 
-        console.log(
+        devLog(
             `🗑️ 删除消息: 从 [${deleteStartIndex}] 到 [${deleteEndIndex}]，共 ${deleteCount} 条`,
         );
 
@@ -494,7 +489,7 @@ async function deleteMessage(index: number) {
         // 前端也删除（后端会通过事件同步，但为了即时响应先删除）
         messages.value.splice(deleteStartIndex, deleteCount);
 
-        console.log(`✅ 已删除 ${deleteCount} 条消息`);
+        devLog(`✅ 已删除 ${deleteCount} 条消息`);
     } catch (error) {
         console.error("删除消息失败:", error);
     }
@@ -509,33 +504,30 @@ async function regenerateResponse() {
 
     if (lastMessage.role === "assistant") {
         try {
-            aiStore.isLoading = true;
-
             // 先删除前端的最后一条AI消息（后端也会删除）
             messages.value.pop();
 
             // 调用后端重新生成命令（会自动删除后端历史并重新生成）
             await aiStore.regenerateLastMessage();
 
-            console.log("✅ 重新生成完成");
+            devLog("✅ 重新生成完成");
         } catch (error) {
             console.error("重新生成失败:", error);
-            aiStore.isLoading = false;
         }
     } else {
-        console.warn("最后一条消息不是AI回复，无法重新生成");
+        devWarn("最后一条消息不是AI回复，无法重新生成");
     }
 }
 
 // 继续生成回复（当最后一条是用户消息时）
 async function continueFromUserMessage() {
     try {
-        console.log("🔄 触发AI生成回复...");
+        devLog("🔄 触发AI生成回复...");
 
         // 调用新的 continueChat API（专门用于基于最后一条用户消息生成AI回复）
         await aiStore.continueChat();
 
-        console.log("✅ AI回复生成完成");
+        devLog("✅ AI回复生成完成");
     } catch (error) {
         console.error("生成AI回复失败:", error);
     }
@@ -548,19 +540,51 @@ async function continueFromUserMessage() {
  */
 async function initializeCommands() {
     // 从后端获取所有可用命令
-    await updateAvailableCommands();
+    await refreshAvailableCommands();
 }
 
 /**
  * 更新可用命令列表
  */
-async function updateAvailableCommands() {
+async function refreshAvailableCommands(forceRefresh = false) {
     try {
-        availableCommands.value = await backendCommandService.getCommands();
+        availableCommands.value = await aiStore.getAvailableCommands(forceRefresh);
         await updateFilteredCommands();
     } catch (error) {
         console.error("更新命令列表失败:", error);
     }
+}
+
+function clearCommandSearchDebounce() {
+    if (commandSearchDebounceTimer) {
+        clearTimeout(commandSearchDebounceTimer);
+        commandSearchDebounceTimer = null;
+    }
+}
+
+function clearCommandRefreshDebounce() {
+    if (commandRefreshDebounceTimer) {
+        clearTimeout(commandRefreshDebounceTimer);
+        commandRefreshDebounceTimer = null;
+    }
+}
+
+function scheduleCommandSearch() {
+    clearCommandSearchDebounce();
+    commandSearchDebounceTimer = setTimeout(() => {
+        void updateFilteredCommands();
+    }, COMMAND_SEARCH_DEBOUNCE_MS);
+}
+
+function scheduleCommandAvailabilityRefresh(forceRefresh = true) {
+    clearCommandRefreshDebounce();
+    commandRefreshDebounceTimer = setTimeout(() => {
+        if (!showCommandPalette.value) {
+            return;
+        }
+
+        void refreshAvailableCommands(forceRefresh);
+    }, COMMAND_REFRESH_DEBOUNCE_MS);
 }
 
 /**
@@ -568,7 +592,7 @@ async function updateAvailableCommands() {
  */
 async function updateFilteredCommands() {
     try {
-        filteredCommands.value = await backendCommandService.searchCommands(
+        filteredCommands.value = await aiStore.searchCommands(
             commandSearchQuery.value,
         );
     } catch (error) {
@@ -579,18 +603,18 @@ async function updateFilteredCommands() {
 /**
  * 打开命令面板
  */
-function openCommandPalette() {
+async function openCommandPalette() {
     // 设置用户输入为"/"
     if (chatInputRef.value) {
         chatInputRef.value.setValue("/");
     }
     commandSearchQuery.value = "";
 
-    // 更新可用命令
-    updateAvailableCommands();
-
     // 显示命令面板
     showCommandPalette.value = true;
+
+    // 更新可用命令
+    await refreshAvailableCommands(true);
 }
 
 /**
@@ -599,6 +623,8 @@ function openCommandPalette() {
 function closeCommandPalette() {
     showCommandPalette.value = false;
     commandSearchQuery.value = "";
+    clearCommandSearchDebounce();
+    clearCommandRefreshDebounce();
 
     // 清空输入框
     if (chatInputRef.value) {
@@ -641,7 +667,7 @@ async function handleCommandSelect(command: CommandMetadata) {
 async function executeCommand(command: CommandMetadata) {
     try {
         // 调用后端执行命令
-        const result = await backendCommandService.executeCommand(
+        const result = await aiStore.executeCommand(
             command.id,
             userInput.value,
         );
@@ -651,7 +677,7 @@ async function executeCommand(command: CommandMetadata) {
 
         // 命令执行成功
         if (result.success) {
-            console.log(`命令 ${command.name} 执行成功:`, result.message);
+            devLog(`命令 ${command.name} 执行成功:`, result.message);
             // 可以在这里显示通知（使用右上角通知组件）
             // TODO: 集成通知系统
         } else {
@@ -705,23 +731,31 @@ watch(userInput, (newValue) => {
 
         // 提取搜索关键字（去除开头的"/"）
         commandSearchQuery.value = newValue.replace(/^\//, "");
-        updateFilteredCommands();
+        scheduleCommandSearch();
     }
 });
 
+watch(commandAvailabilitySignature, (newValue, oldValue) => {
+    if (!oldValue || newValue === oldValue) {
+        return;
+    }
+
+    aiStore.clearCommandCache();
+    scheduleCommandAvailabilityRefresh();
+});
+
 onMounted(async () => {
-    loadApiConfigs();
-    loadAIRoles();
+    await Promise.all([loadApiConfigs(), loadAIRoles()]);
 
     // 初始化命令系统
-    initializeCommands();
+    await initializeCommands();
 
     // 先从 store 恢复聊天历史（如果有）
     const characterId = getCurrentCharacterId();
     if (characterId) {
         const storedHistory = chatStore.getChatHistory(characterId);
         if (storedHistory.length > 0) {
-            console.log(`📦 从 Store 恢复 ${storedHistory.length} 条聊天历史`);
+            devLog(`📦 从 Store 恢复 ${storedHistory.length} 条聊天历史`);
             messages.value = storedHistory.map((msg, index) => ({
                 id: `${msg.timestamp || index}_${characterId}`,
                 role: msg.role, // 保留原始 role：user/assistant/tool
@@ -745,8 +779,8 @@ onMounted(async () => {
     if (props.characterData?.name && characterId) {
         const storedHistory = chatStore.getChatHistory(characterId);
         if (chatStore.isBackendSessionActive && storedHistory.length > 0) {
-            console.log(`🔄 组件重新挂载，后端会话已存在，跳过重复加载`);
-            aiStore.isBackendSessionActive = true;
+            devLog(`🔄 组件重新挂载，后端会话已存在，跳过重复加载`);
+            aiStore.updateSessionState(characterId, true);
             // 不重新加载，使用 store 中的数据即可
         }
     }
@@ -757,6 +791,9 @@ onMounted(async () => {
 
 // 组件卸载时清理事件监听器并保存状态到 store
 onUnmounted(() => {
+    clearCommandSearchDebounce();
+    clearCommandRefreshDebounce();
+
     // 保存当前聊天历史到 store
     const characterId = getCurrentCharacterId();
     if (characterId && messages.value.length > 0) {
@@ -769,7 +806,7 @@ onUnmounted(() => {
             tool_call_id: undefined,
         }));
         chatStore.setChatHistory(characterId, chatMessages);
-        console.log(`💾 组件卸载，保存 ${chatMessages.length} 条消息到 Store`);
+        devLog(`💾 组件卸载，保存 ${chatMessages.length} 条消息到 Store`);
     }
 
     cleanupEventListeners();

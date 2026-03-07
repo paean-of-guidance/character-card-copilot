@@ -10,6 +10,28 @@ export class BackendCommandService {
   private lastFetchTime: number = 0
   private cacheDuration: number = 5000 // 5秒缓存
 
+  private normalizeQuery(query: string): string {
+    return query.toLowerCase().trim().replace(/^\//, '')
+  }
+
+  filterCommands(
+    query: string,
+    commands: CommandMetadata[] = this.cachedCommands,
+  ): CommandMetadata[] {
+    const normalizedQuery = this.normalizeQuery(query)
+
+    if (!normalizedQuery) {
+      return [...commands]
+    }
+
+    return commands.filter(
+      (cmd) =>
+        cmd.id.toLowerCase().includes(normalizedQuery) ||
+        cmd.name.toLowerCase().includes(normalizedQuery) ||
+        cmd.description.toLowerCase().includes(normalizedQuery),
+    )
+  }
+
   /**
    * 获取可用命令列表（带缓存）
    */
@@ -42,22 +64,11 @@ export class BackendCommandService {
    * 搜索命令
    */
   async searchCommands(query: string): Promise<CommandMetadata[]> {
-    try {
-      // 调用后端搜索（后端已实现搜索逻辑）
-      return await invoke<CommandMetadata[]>('search_commands', { query })
-    } catch (error) {
-      console.error('搜索命令失败:', error)
-
-      // 降级到本地搜索（使用缓存的命令）
-      const normalizedQuery = query.toLowerCase().trim().replace(/^\//, '')
-
-      return this.cachedCommands.filter(
-        (cmd) =>
-          cmd.id.toLowerCase().includes(normalizedQuery) ||
-          cmd.name.toLowerCase().includes(normalizedQuery) ||
-          cmd.description.toLowerCase().includes(normalizedQuery)
-      )
+    if (this.cachedCommands.length === 0) {
+      await this.getCommands()
     }
+
+    return this.filterCommands(query)
   }
 
   /**
@@ -65,12 +76,16 @@ export class BackendCommandService {
    */
   async executeCommand(commandId: string, userInput?: string): Promise<CommandResult> {
     try {
-      return await invoke<CommandResult>('execute_command', {
+      const result = await invoke<CommandResult>('execute_command', {
         commandId,
         userInput: userInput || null,
       })
+
+      this.clearCache()
+      return result
     } catch (error) {
       console.error(`执行命令 "${commandId}" 失败:`, error)
+      this.clearCache()
       return {
         success: false,
         error: error instanceof Error ? error.message : '命令执行失败',

@@ -1,6 +1,8 @@
 use crate::chat_history::ChatMessage;
-use crate::character_storage::{CharacterData, CharacterBook};
 use crate::backend::domain::{ContextBuilderOptions, TokenBudget};
+use crate::character_session::SESSION_MANAGER;
+use crate::character_storage::{CharacterBook, CharacterData, CharacterStorage};
+use crate::chat_history::ChatHistoryManager;
 use crate::token_counter::get_token_counter;
 use serde::{Deserialize, Serialize};
 
@@ -464,9 +466,23 @@ pub fn create_default_context_builder() -> ContextBuilder {
 /// 构建上下文（用于测试）
 #[tauri::command]
 pub async fn build_context(
-    _character_uuid: String,
-    _token_limit: Option<usize>,
+    app_handle: tauri::AppHandle,
+    character_uuid: String,
+    token_limit: Option<usize>,
 ) -> Result<BuiltContextResult, String> {
-    // TODO: 在任务1.3中实现完整的会话集成
-    Err("build_context 命令将在后续任务中完整实现".to_string())
+    let (character_data, chat_history) = if let Some(session) = SESSION_MANAGER.get_session(&character_uuid) {
+        (session.character_data.clone(), session.chat_history.clone())
+    } else {
+        let character_data = CharacterStorage::get_character_by_uuid(&app_handle, &character_uuid)?
+            .ok_or_else(|| format!("角色 {} 不存在", character_uuid))?;
+        let history = ChatHistoryManager::new(&app_handle, &character_uuid).load_history()?;
+        (character_data, history)
+    };
+
+    let mut options = ContextBuilderOptions::default();
+    if let Some(limit) = token_limit {
+        options.token_limit = limit;
+    }
+
+    ContextBuilder::new(options).build_full_context(&character_data, &chat_history, None)
 }

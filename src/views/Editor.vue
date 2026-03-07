@@ -3,6 +3,7 @@ import { onMounted, ref, watch, nextTick, onUnmounted, computed, onBeforeUnmount
 import { useRoute, useRouter } from "vue-router";
 import { useAppStore } from "@/stores/app";
 import { useCharacterStore } from "@/stores/character";
+import { useAiStore } from "@/stores/ai";
 import {
     deleteCharacter as deleteCharacterByUUID,
     exportCharacterCard,
@@ -19,9 +20,9 @@ import {
 import { save } from "@tauri-apps/plugin-dialog";
 import { CharacterStateService } from "@/services/characterState";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { tokenCounter } from "@/utils/tokenCounter";
+import { devLog } from "@/utils/logger";
 import { useNotification } from "@/composables/useNotification";
 import { useModal } from "@/composables/useModal";
 import type {
@@ -33,6 +34,7 @@ import type {
 
 const appStore = useAppStore();
 const characterStore = useCharacterStore();
+const aiStore = useAiStore();
 const route = useRoute();
 const router = useRouter();
 const { showSuccessToast, showErrorToast, showWarningToast } =
@@ -133,13 +135,13 @@ function toggleEditorMode() {
  * 初始化后端事件监听器
  */
 async function initializeBackendEventListeners() {
-    console.log("Editor: 初始化后端事件监听器...");
+    devLog("Editor: 初始化后端事件监听器...");
 
     // 角色加载事件
     const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>(
         "character-loaded",
         async (event) => {
-            console.log("Editor: 🎭 角色加载事件:", event.payload);
+            devLog("Editor: 🎭 角色加载事件:", event.payload);
             const payload = event.payload;
 
             // ✅ 更新 Store 缓存（不会闪烁）
@@ -147,7 +149,7 @@ async function initializeBackendEventListeners() {
 
             // 如果是当前编辑的角色，更新本地数据
             if (payload.uuid === characterUUID.value) {
-                console.log("Editor: 更新角色数据到编辑器");
+                devLog("Editor: 更新角色数据到编辑器");
                 await updateEditorFromCharacterData(payload.character_data);
             }
         },
@@ -157,7 +159,7 @@ async function initializeBackendEventListeners() {
     const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>(
         "character-updated",
         async (event) => {
-            console.log("Editor: 🔄 角色更新事件:", event.payload);
+            devLog("Editor: 🔄 角色更新事件:", event.payload);
             const payload = event.payload;
 
             // ✅ 更新 Store 缓存（工具调用修改后会触发此事件）
@@ -165,7 +167,7 @@ async function initializeBackendEventListeners() {
 
             // 如果是当前编辑的角色，更新本地数据
             if (payload.uuid === characterUUID.value) {
-                console.log("Editor: 角色数据已更新，同步到编辑器");
+                devLog("Editor: 角色数据已更新，同步到编辑器");
                 await updateEditorFromCharacterData(payload.character_data);
 
                 // 显示更新通知
@@ -198,7 +200,7 @@ async function initializeBackendEventListeners() {
     const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>(
         "session-unloaded",
         (event) => {
-            console.log("Editor: 🚪 会话卸载事件:", event.payload);
+            devLog("Editor: 🚪 会话卸载事件:", event.payload);
             const payload = event.payload;
 
             // 如果是当前编辑角色的会话被卸载，显示提示
@@ -230,14 +232,14 @@ async function initializeBackendEventListeners() {
         unlistenError,
     );
 
-    console.log("Editor: ✅ 后端事件监听器初始化完成");
+    devLog("Editor: ✅ 后端事件监听器初始化完成");
 }
 
 /**
  * 清理所有事件监听器
  */
 function cleanupEventListeners() {
-    console.log("Editor: 清理事件监听器...");
+    devLog("Editor: 清理事件监听器...");
     eventUnlisteners.value.forEach((unlisten) => {
         try {
             unlisten();
@@ -246,7 +248,7 @@ function cleanupEventListeners() {
         }
     });
     eventUnlisteners.value = [];
-    console.log("Editor: ✅ 事件监听器清理完成");
+    devLog("Editor: ✅ 事件监听器清理完成");
 }
 
 /**
@@ -316,7 +318,7 @@ async function updateEditorFromCharacterData(incomingCharacterData: any) {
         backgroundPath.value = incomingCharacterData.backgroundPath || "";
         thumbnailPath.value = incomingCharacterData.thumbnailPath || "";
 
-        console.log("Editor: 角色数据已同步到编辑器");
+        devLog("Editor: 角色数据已同步到编辑器");
     } catch (error) {
         console.error("Editor: 更新编辑器数据失败:", error);
         showErrorToast("同步角色数据失败", "数据同步错误");
@@ -356,7 +358,7 @@ async function handleAvatarClick() {
                 characterUUID.value,
                 uploadedPath.backgroundPath,
             );
-            console.log("头像上传成功:", uploadedPath);
+            devLog("头像上传成功:", uploadedPath);
         } catch (error) {
             console.error("头像上传失败:", error);
             showErrorToast("头像上传失败，请重试", "上传失败");
@@ -406,10 +408,10 @@ async function loadCharacterData(uuid: string) {
             thumbnailPath.value = character.thumbnailPath || "";
 
             // 🔥 新增：触发后端会话加载，让AI可以看到角色数据
-            console.log("Editor: 触发后端会话加载...", uuid);
+            devLog("Editor: 触发后端会话加载...", uuid);
             try {
-                await invoke("load_character_session", { uuid });
-                console.log("Editor: 后端会话加载成功");
+                await aiStore.loadCharacterSession(uuid);
+                devLog("Editor: 后端会话加载成功");
             } catch (error) {
                 console.error("Editor: 后端会话加载失败:", error);
             }
@@ -481,13 +483,13 @@ async function updateField(
                 fieldName,
                 newStr,
             );
-            console.log(`字段 ${fieldName} 已保存`);
+            devLog(`字段 ${fieldName} 已保存`);
         } catch (error) {
             console.error(`更新字段 ${fieldName} 失败:`, error);
             showErrorToast(`保存 ${fieldName} 失败`, "保存错误");
         }
     } else {
-        console.log(`字段 ${fieldName} 值未变化，跳过保存`);
+        devLog(`字段 ${fieldName} 值未变化，跳过保存`);
     }
 }
 
@@ -582,7 +584,7 @@ async function deleteCharacter() {
             async () => {
                 // 调用删除角色的API
                 await deleteCharacterByUUID(characterUUID.value);
-                console.log("角色删除成功");
+                devLog("角色删除成功");
             },
             {
                 title: "删除确认",

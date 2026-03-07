@@ -7,7 +7,7 @@ use crate::command_system::loader;
 pub async fn initialize_command_system() {
     CommandService::initialize().await;
     let count = loader::register_builtin_commands().await;
-    println!("✅ 命令系统初始化完成，已注册 {} 个内置命令", count);
+    crate::debug_log!("✅ 命令系统初始化完成，已注册 {} 个内置命令", count);
 }
 
 /// 获取可用命令列表

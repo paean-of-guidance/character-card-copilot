@@ -72,6 +72,7 @@ import WorldBookEntry from './WorldBookEntry.vue';
 import WorldBookEditorModal from './WorldBookEditorModal.vue';
 import type { CreateWorldBookEntryParams, UpdateWorldBookEntryParams } from '@/types/character';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { devLog } from '@/utils/logger';
 
 interface Props {
   characterUuid: string;
@@ -101,25 +102,25 @@ onMounted(async () => {
 
   // 监听世界书条目创建事件
   unlistenWorldBookCreated = await listen('world-book-entry-created', async (event) => {
-    console.log('📚 收到世界书条目创建事件:', event.payload);
+    devLog('📚 收到世界书条目创建事件:', event.payload);
     const payload = event.payload as { character_uuid: string; entry_id: number; entry_name?: string; keys: string[] };
 
     // 只有当事件是针对当前角色时才刷新
     if (payload.character_uuid === props.characterUuid) {
-      console.log('✅ 刷新世界书数据...');
+      devLog('✅ 刷新世界书数据...');
       await worldBookStore.loadWorldBook(props.characterUuid);
     }
   });
 
   // 监听工具执行事件（用于调试）
   unlistenToolExecuted = await listen('tool-executed', (event) => {
-    console.log('🔧 收到工具执行事件:', event.payload);
+    devLog('🔧 收到工具执行事件:', event.payload);
     const payload = event.payload as { tool_name: string; character_uuid?: string };
 
     // 如果是世界书相关工具且是当前角色，也刷新
     if (payload.tool_name === 'create_world_book_entry' &&
         payload.character_uuid === props.characterUuid) {
-      console.log('✅ 工具执行成功，数据已刷新');
+      devLog('✅ 工具执行成功，数据已刷新');
     }
   });
 });
@@ -153,16 +154,16 @@ function handleCreateNew(): void {
 }
 
 function handleEdit(entryId: number | undefined): void {
-  console.log('🖊️ WorldBookEditor.handleEdit called with entryId:', entryId);
-  console.log('  - Current selectedEntry:', worldBookStore.selectedEntry);
-  console.log('  - Current isCreatingNew:', worldBookStore.isCreatingNew);
+  devLog('🖊️ WorldBookEditor.handleEdit called with entryId:', entryId);
+  devLog('  - Current selectedEntry:', worldBookStore.selectedEntry);
+  devLog('  - Current isCreatingNew:', worldBookStore.isCreatingNew);
 
   if (entryId !== undefined) {
     worldBookStore.selectEntry(entryId);
 
-    console.log('  - After selectEntry:');
-    console.log('    - selectedEntry:', worldBookStore.selectedEntry);
-    console.log('    - isCreatingNew:', worldBookStore.isCreatingNew);
+    devLog('  - After selectEntry:');
+    devLog('    - selectedEntry:', worldBookStore.selectedEntry);
+    devLog('    - isCreatingNew:', worldBookStore.isCreatingNew);
   }
 }
 

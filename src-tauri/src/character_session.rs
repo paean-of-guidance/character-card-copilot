@@ -319,7 +319,7 @@ impl SessionManager {
             .min_by_key(|(_, session)| session.last_active)
             .map(|(uuid, _)| (uuid.clone(), ()))
         {
-            eprintln!("清理旧会话: {}", oldest_uuid);
+            crate::debug_warn!("清理旧会话: {}", oldest_uuid);
             sessions.remove(&oldest_uuid);
         }
 

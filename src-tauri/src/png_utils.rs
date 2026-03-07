@@ -86,7 +86,7 @@ impl PngMetadataUtils {
             let chunk_type = &png_bytes[pos + 4..pos + 8];
             let chunk_type_str = String::from_utf8_lossy(chunk_type);
 
-            eprintln!("[DEBUG] 发现 chunk: {} (长度: {})", chunk_type_str, length);
+            crate::debug_warn!("[DEBUG] 发现 chunk: {} (长度: {})", chunk_type_str, length);
 
             // 检查是否是 tEXt chunk
             if chunk_type == b"tEXt" && pos + 8 + length <= png_bytes.len() {
@@ -98,14 +98,14 @@ impl PngMetadataUtils {
                     let keyword = String::from_utf8_lossy(&data[..null_pos]);
                     let text = &data[null_pos + 1..];
 
-                    eprintln!(
+                    crate::debug_warn!(
                         "[DEBUG] tEXt keyword: '{}', text length: {}",
                         keyword,
                         text.len()
                     );
 
                     if keyword == "chara" || keyword == "ccv3" {
-                        eprintln!("[DEBUG] 找到角色卡 tEXt chunk!");
+                        crate::debug_warn!("[DEBUG] 找到角色卡 tEXt chunk!");
                         // text 应该是 Base64 编码的 JSON
                         let text_str = String::from_utf8_lossy(text);
                         let json_bytes = STANDARD.decode(text_str.as_bytes())?;
@@ -120,7 +120,7 @@ impl PngMetadataUtils {
             pos += 4 + 4 + length + 4;
         }
 
-        eprintln!("[DEBUG] 遍历完所有 chunks，未找到角色卡数据");
+        crate::debug_warn!("[DEBUG] 遍历完所有 chunks，未找到角色卡数据");
         Err(PngMetadataError::CharaDataNotFound)
     }
 

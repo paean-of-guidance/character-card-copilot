@@ -18,6 +18,7 @@ import {
   batchDeleteEntries,
   reorderEntries,
 } from '@/services/worldBookService';
+import { devLog } from '@/utils/logger';
 
 export const useWorldBookStore = defineStore('worldBook', () => {
   // 状态
@@ -263,14 +264,14 @@ export const useWorldBookStore = defineStore('worldBook', () => {
    * 选中条目
    */
   function selectEntry(entryId: number | null): void {
-    console.log('🎯 worldBookStore.selectEntry called with entryId:', entryId);
+    devLog('🎯 worldBookStore.selectEntry called with entryId:', entryId);
     selectedEntryId.value = entryId;
     isCreatingNew.value = false;
 
     // 立即查找并输出选中的条目
     const entry = worldBook.value?.entries.find(e => e.id === entryId);
-    console.log('  - Found entry:', entry);
-    console.log('  - selectedEntry computed will be:', selectedEntry.value);
+    devLog('  - Found entry:', entry);
+    devLog('  - selectedEntry computed will be:', selectedEntry.value);
   }
 
   /**

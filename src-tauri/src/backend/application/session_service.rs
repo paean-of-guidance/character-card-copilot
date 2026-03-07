@@ -59,7 +59,7 @@ impl SessionService {
         let removed_session = SESSION_MANAGER.remove_session(&uuid)?;
 
         if let Some(session) = removed_session {
-            println!("会话 {} 已卸载", uuid);
+            crate::debug_log!("会话 {} 已卸载", uuid);
 
             let session_info = session.get_session_info();
             if let Err(e) = EventBus::session_unloaded(
@@ -122,7 +122,7 @@ impl SessionService {
         for uuid in expired_sessions {
             sessions.remove(&uuid);
             removed_count += 1;
-            println!("清理过期会话: {}", uuid);
+            crate::debug_log!("清理过期会话: {}", uuid);
         }
 
         Ok(removed_count)
@@ -142,7 +142,7 @@ impl SessionService {
 
         SESSION_MANAGER.update_session(session)?;
 
-        println!("删除消息 [{}]: {:?}", index, deleted_message.content);
+        crate::debug_log!("删除消息 [{}]: {:?}", index, deleted_message.content);
 
         Ok(())
     }
@@ -162,7 +162,7 @@ impl SessionService {
 
         SESSION_MANAGER.update_session(session)?;
 
-        println!("编辑消息 [{}]: {:?}", index, edited_message.content);
+        crate::debug_log!("编辑消息 [{}]: {:?}", index, edited_message.content);
 
         Ok(())
     }
@@ -196,7 +196,7 @@ impl SessionService {
             return Err("倒数第二条消息不是用户消息，无法重新生成".to_string());
         }
 
-        println!("重新生成消息，基于用户消息: {:?}", user_message.content);
+        crate::debug_log!("重新生成消息，基于用户消息: {:?}", user_message.content);
 
         SESSION_MANAGER.update_session(session.clone())?;
 
@@ -217,7 +217,7 @@ impl SessionService {
             return Err("最后一条消息不是用户消息，无法继续对话".to_string());
         }
 
-        println!("继续对话，基于最后一条用户消息: {:?}", last_message.content);
+        crate::debug_log!("继续对话，基于最后一条用户消息: {:?}", last_message.content);
 
         Self::generate_ai_response(app_handle, &mut session, "continue").await
     }
@@ -310,13 +310,13 @@ impl SessionService {
 
         let disable_tools_for_debug = false;
 
-        println!("=== AI 请求调试信息 ===");
-        println!("模型: {}", api_config.model);
-        println!("API端点: {}", api_config.endpoint);
-        println!("消息数量: {}", ai_chat_messages.len());
-        println!("工具数量: {}", chat_tools.len());
+        crate::debug_log!("=== AI 请求调试信息 ===");
+        crate::debug_log!("模型: {}", api_config.model);
+        crate::debug_log!("API端点: {}", api_config.endpoint);
+        crate::debug_log!("消息数量: {}", ai_chat_messages.len());
+        crate::debug_log!("工具数量: {}", chat_tools.len());
         if disable_tools_for_debug {
-            println!("⚠️ 工具已临时禁用（调试模式）");
+            crate::debug_log!("⚠️ 工具已临时禁用（调试模式）");
         }
 
         for (idx, msg) in ai_chat_messages.iter().enumerate() {
@@ -326,7 +326,7 @@ impl SessionService {
                 crate::ai_chat::MessageRole::Assistant => "assistant",
                 crate::ai_chat::MessageRole::Tool => "tool",
             };
-            println!(
+            crate::debug_log!(
                 "消息[{}] role={}, content_len={}, has_tool_calls={}, tool_call_id={:?}",
                 idx,
                 role_str,
@@ -335,10 +335,10 @@ impl SessionService {
                 msg.tool_call_id
             );
             if msg.content.is_empty() && msg.tool_calls.is_none() {
-                println!("⚠️ 警告: 消息[{}]内容为空且没有tool_calls", idx);
+                crate::debug_log!("⚠️ 警告: 消息[{}]内容为空且没有tool_calls", idx);
             }
         }
-        println!("=====================");
+        crate::debug_log!("=====================");
 
         let request = crate::ai_chat::ChatCompletionRequest {
             model: api_config.model.clone(),

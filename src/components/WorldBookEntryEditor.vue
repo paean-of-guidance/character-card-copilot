@@ -286,6 +286,7 @@ import { ref, watch } from 'vue';
 import { useNotification } from '@/composables/useNotification';
 import { useModal } from '@/composables/useModal';
 import type { WorldBookEntry, CreateWorldBookEntryParams, UpdateWorldBookEntryParams } from '@/types/character';
+import { devLog } from '@/utils/logger';
 
 interface Props {
   entry?: WorldBookEntry | null;
@@ -338,21 +339,21 @@ const extensionsProbability = ref(100);
 
 // 监听entry和isCreatingNew变化，更新表单数据
 watch([() => props.entry, () => props.isCreatingNew], ([entry, creating]) => {
-  console.log('🔍 WorldBookEntryEditor watch triggered:');
-  console.log('  - entry:', entry);
-  console.log('  - isCreatingNew:', creating);
-  console.log('  - props.entry:', props.entry);
-  console.log('  - props.isCreatingNew:', props.isCreatingNew);
+  devLog('🔍 WorldBookEntryEditor watch triggered:');
+  devLog('  - entry:', entry);
+  devLog('  - isCreatingNew:', creating);
+  devLog('  - props.entry:', props.entry);
+  devLog('  - props.isCreatingNew:', props.isCreatingNew);
 
   if (creating) {
-    console.log('✏️ 创建新条目模式');
+    devLog('✏️ 创建新条目模式');
     // 创建新条目：重置表单为默认值
     formData.value = getDefaultFormData();
     extensionsDepth.value = 5;
     extensionsProbability.value = 100;
   } else if (entry) {
-    console.log('📝 编辑现有条目模式');
-    console.log('  - entry data:', JSON.stringify(entry, null, 2));
+    devLog('📝 编辑现有条目模式');
+    devLog('  - entry data:', JSON.stringify(entry, null, 2));
     // 编辑现有条目：保留所有原始字段，包括 extensions、id、insertion_order 等
     formData.value = {
       ...entry,
@@ -374,11 +375,11 @@ watch([() => props.entry, () => props.isCreatingNew], ([entry, creating]) => {
     extensionsDepth.value = ext?.depth ?? 5;
     extensionsProbability.value = ext?.probability ?? 100;
 
-    console.log('  - formData after assignment:', JSON.stringify(formData.value, null, 2));
-    console.log('  - extensionsDepth:', extensionsDepth.value);
-    console.log('  - extensionsProbability:', extensionsProbability.value);
+    devLog('  - formData after assignment:', JSON.stringify(formData.value, null, 2));
+    devLog('  - extensionsDepth:', extensionsDepth.value);
+    devLog('  - extensionsProbability:', extensionsProbability.value);
   } else {
-    console.log('⚠️ Neither creating nor editing - no action taken');
+    devLog('⚠️ Neither creating nor editing - no action taken');
   }
 }, { immediate: true });
 
@@ -429,7 +430,7 @@ function handleSave(): void {
     },
   };
 
-  console.log('💾 Saving entry with extensions:', dataToSave.extensions);
+  devLog('💾 Saving entry with extensions:', dataToSave.extensions);
   emit('save', dataToSave);
 }
 

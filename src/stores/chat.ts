@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ChatMessage } from '@/types/api'
+import { devLog } from '@/utils/logger'
 
 /**
  * 聊天状态管理 Store
@@ -36,7 +37,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function setChatHistory(uuid: string, messages: ChatMessage[]) {
     chatHistories.value.set(uuid, messages)
-    console.log(`💾 Store: 保存 ${uuid} 的 ${messages.length} 条聊天历史`)
+    devLog(`💾 Store: 保存 ${uuid} 的 ${messages.length} 条聊天历史`)
   }
 
   /**
@@ -53,7 +54,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function clearChatHistory(uuid: string) {
     chatHistories.value.set(uuid, [])
-    console.log(`🗑️ Store: 清空 ${uuid} 的聊天历史`)
+    devLog(`🗑️ Store: 清空 ${uuid} 的聊天历史`)
   }
 
   /**

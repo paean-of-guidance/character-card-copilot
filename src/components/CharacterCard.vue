@@ -2,6 +2,7 @@
 import {  onMounted, ref, watch, onBeforeUnmount } from "vue";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { CharacterData } from "@/types/character";
+import { devLog } from "@/utils/logger";
 
 const props = defineProps<{
     character: CharacterData;
@@ -80,7 +81,7 @@ onBeforeUnmount(() => {
 });
 
 onMounted(() => {
-    console.log(
+    devLog(
         `CharacterCard mounted for ${props.character.card.data.name}:`,
         {
             backgroundPath: props.character.backgroundPath,

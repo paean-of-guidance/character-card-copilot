@@ -166,6 +166,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { WorldBookEntry } from '@/types/character';
+import { devLog } from '@/utils/logger';
 
 interface Props {
   entry: WorldBookEntry;
@@ -214,15 +215,15 @@ function toggleExpanded(): void {
 }
 
 function handleEdit(): void {
-  console.log('🔘 WorldBookEntry edit button clicked');
-  console.log('  - entry.id:', props.entry.id);
-  console.log('  - full entry:', props.entry);
+  devLog('🔘 WorldBookEntry edit button clicked');
+  devLog('  - entry.id:', props.entry.id);
+  devLog('  - full entry:', props.entry);
   emit('edit', props.entry.id);
 }
 
 function handleDelete(): void {
-  console.log('🗑️ WorldBookEntry delete button clicked');
-  console.log('  - entry.id:', props.entry.id);
+  devLog('🗑️ WorldBookEntry delete button clicked');
+  devLog('  - entry.id:', props.entry.id);
   emit('delete', props.entry.id);
 }
 </script>

@@ -9,12 +9,3 @@ pub async fn create_chat_completion(
 ) -> Result<ChatCompletionResponse, String> {
     AIChatService::create_chat_completion(&api_config, &request, Some(&app)).await
 }
-
-#[tauri::command]
-pub async fn create_streaming_chat_completion(
-    api_config: ApiConfig,
-    request: ChatCompletionRequest,
-) -> Result<String, String> {
-    AIChatService::create_streaming_chat_completion(&api_config, &request).await
-}
-
