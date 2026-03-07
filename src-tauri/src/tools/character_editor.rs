@@ -22,7 +22,7 @@ impl AIToolTrait for EditCharacterTool {
     }
 
     fn description(&self) -> &'static str {
-        "直接编辑角色卡字段。使用方法：将要更新的字段作为参数传入，例如要更新description字段，就直接传入description参数。不需要指定角色名称，系统会自动使用当前角色。支持的参数：name, description, personality, scenario, first_mes, mes_example, creator_notes, system_prompt, post_history_instructions, alternate_greetings(使用<START_ALT>标记每段), tags(逗号分隔), creator, character_version"
+        "直接整字段重写角色卡字段。仅在用户明确要求重写整个字段时使用；如果只是修改字段中的局部内容，应优先使用 patch_character_field。不需要指定角色名称，系统会自动使用当前角色。支持的参数：name, description, personality, scenario, first_mes, mes_example, creator_notes, system_prompt, post_history_instructions, alternate_greetings(使用<START_ALT>标记每段), tags(逗号分隔), creator, character_version"
     }
 
     fn category(&self) -> &'static str {

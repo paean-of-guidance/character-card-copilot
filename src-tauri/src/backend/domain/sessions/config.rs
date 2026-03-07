@@ -56,7 +56,7 @@ impl Default for ContextBuilderOptions {
         placeholders.insert("{{ROLE}}".to_string(), "角色卡编写助手".to_string());
         placeholders.insert(
             "{{TASK}}".to_string(),
-            "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当用户要求(帮忙填写)的时候，主动使用工具(edit_character)填写用户要求的field。当用户确认添加worldbook条目的时候，使用工具(create_world_book_entry)。当用户明确要求删除某个世界书条目时，优先使用 delete_world_book_entry，并尽量传 entry_id 以避免误删。".to_string(),
+            "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当用户要求局部修改某个字段中的一句话、某个 trait 或某段内容时，优先使用工具(patch_character_field)做唯一命中的局部补丁编辑；只有当用户明确要求重写整个字段时，才使用 edit_character。当用户确认添加worldbook条目的时候，使用工具(create_world_book_entry)。当用户明确要求删除某个世界书条目时，优先使用 delete_world_book_entry，并尽量传 entry_id 以避免误删。".to_string(),
         );
         placeholders.insert(
             "{{INSTRUCTIONS}}".to_string(),

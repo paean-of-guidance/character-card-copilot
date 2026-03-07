@@ -150,8 +150,12 @@ impl ContextBuilder {
 
         if self.options.tools_enabled {
             content.push_str("tools:\n");
+            content.push_str("  - name: \"patch_character_field\"\n");
+            content.push_str("    description: \"对 description、personality 等长文本字段做局部替换或插入；search 必须唯一命中，否则失败\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"operation\": {\"type\": \"string\", \"enum\": [\"replace\", \"insert_before\", \"insert_after\"]}, \"match_mode\": {\"type\": \"string\", \"enum\": [\"exact\", \"regex\"]}, \"search\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}\n");
+
             content.push_str("  - name: \"edit_character\"\n");
-            content.push_str("    description: \"编辑角色字段\"\n");
+            content.push_str("    description: \"整字段重写角色字段；仅在用户明确要求整段重写时使用\"\n");
             content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"value\": {\"type\": \"string\"}}}\n");
 
             content.push_str("  - name: \"create_worldbook_entry\"\n");

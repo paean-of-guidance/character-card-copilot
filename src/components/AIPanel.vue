@@ -309,39 +309,6 @@ watch(
     },
 );
 
-// 删除工具调用组（从 ToolExecutionCard 触发）
-async function deleteToolExecutionGroup(groupIndex: number) {
-    const group = groupedMessages.value[groupIndex];
-
-    if (!group || group.type !== "tool-execution") {
-        console.error(`❌ 组 ${groupIndex} 不是有效的工具调用组`);
-        return;
-    }
-
-    // 通过时间戳找到工具调用链的起始消息（带 tool_calls 的 assistant）
-    // 注意：timestamp 是从带 tool_calls 的 assistant 消息继承的
-    const targetTimestamp = group.timestamp;
-
-    // 在原始消息数组中找到对应的 assistant 消息
-    const startIndex = messages.value.findIndex(
-        (msg) =>
-            msg.role === "assistant" &&
-            msg.tool_calls &&
-            msg.tool_calls.length > 0 &&
-            msg.timestamp.getTime() === targetTimestamp.getTime(),
-    );
-
-    if (startIndex === -1) {
-        console.error(`❌ 未找到工具调用组 ${groupIndex} 的起始消息`);
-        return;
-    }
-
-    devLog(
-        `🎯 删除工具调用组 [${groupIndex}]，起始消息索引: ${startIndex}`,
-    );
-    await deleteMessage(startIndex);
-}
-
 // 开始编辑消息（从 MessageBubble 触发）
 function handleStartEdit(messageId: string) {
     const index = messages.value.findIndex((m) => m.id === messageId);
@@ -921,7 +888,7 @@ onUnmounted(() => {
                         :key="
                             group.type === 'normal'
                                 ? group.message.id
-                                : `tool-${groupIndex}`
+                                : `tool-${group.toolCallId}-${group.timestamp.getTime()}`
                         "
                         class="flex"
                         :class="
@@ -933,11 +900,10 @@ onUnmounted(() => {
                     >
                         <!-- 工具执行卡片 -->
                         <ToolExecutionCard
-                            v-if="group.type === 'tool-execution'"
-                            :tool-calls="group.toolCalls"
-                            :tool-results="group.toolResults"
+                            v-if="group.type === 'tool-meta'"
+                            :tool-call="group.toolCall"
+                            :tool-result="group.toolResult"
                             :timestamp="group.timestamp"
-                            @delete="deleteToolExecutionGroup(groupIndex)"
                         />
 
                         <!-- 普通消息 -->

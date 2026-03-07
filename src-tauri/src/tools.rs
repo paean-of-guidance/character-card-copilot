@@ -1,4 +1,5 @@
 pub mod character_editor;
+pub mod character_field_patcher;
 pub mod world_book_deleter;
 pub mod registry;
 pub mod traits;

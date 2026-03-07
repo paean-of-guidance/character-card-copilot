@@ -109,6 +109,7 @@ lazy_static::lazy_static! {
         let mut registry = ToolRegistry::new();
         // 注册所有工具
         registry.register_tool(super::character_editor::EditCharacterTool);
+        registry.register_tool(super::character_field_patcher::PatchCharacterFieldTool);
         registry.register_tool(super::world_book_creator::CreateWorldBookEntryTool);
         registry.register_tool(super::world_book_deleter::DeleteWorldBookEntryTool);
         std::sync::RwLock::new(registry)
