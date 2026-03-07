@@ -94,46 +94,74 @@ onMounted(() => {
 
 <template>
     <div
-        class="character-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-transform hover:scale-105 hover:shadow-2xl"
+        class="character-card group overflow-hidden rounded-[24px] border border-white/70 bg-white/85 shadow-[0_12px_32px_rgba(148,163,184,0.18)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_22px_50px_rgba(96,165,250,0.16)]"
         @click="handleClick"
     >
-        <div class="aspect-square relative bg-gray-200">
-            <img
-                v-if="imageSrc"
-                :src="imageSrc"
-                :alt="character.card.data.name"
-                class="w-full h-full object-cover"
-                @error="handleImageError"
-            />
+        <div class="aspect-square relative overflow-hidden bg-slate-200">
+            <template v-if="imageSrc">
+                <img
+                    :src="imageSrc"
+                    :alt="character.card.data.name"
+                    class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                    @error="handleImageError"
+                />
+                <div class="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-slate-900/10 to-transparent"></div>
+                <div class="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
+                    <span class="rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-md">
+                        {{ character.card.data.character_version || "未设版本" }}
+                    </span>
+                    <span class="rounded-full border border-white/15 bg-slate-950/25 px-2.5 py-1 text-[11px] text-white/85 backdrop-blur-md">
+                        角色卡
+                    </span>
+                </div>
+                <div class="absolute inset-x-0 bottom-0 p-4 text-white">
+                    <h3 class="text-lg font-semibold tracking-tight drop-shadow-sm line-clamp-1">
+                        {{ character.card.data.name || "未命名角色" }}
+                    </h3>
+                </div>
+            </template>
             <div
                 v-else
-                class="w-full h-full flex items-center justify-center text-gray-400"
+                class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.24),_transparent_30%),linear-gradient(180deg,_#e2e8f0_0%,_#cbd5e1_100%)] text-slate-500"
             >
                 <div class="text-center">
-                    <div class="text-4xl mb-2">👤</div>
-                    <span class="text-sm">暂无图片</span>
+                    <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/50 bg-white/45 shadow-sm backdrop-blur">
+                        <span class="text-2xl">👤</span>
+                    </div>
+                    <span class="text-sm font-medium">暂无封面</span>
                 </div>
             </div>
         </div>
-        <div class="p-4">
-            <h3 class="text-lg font-semibold text-gray-800 truncate">
-                {{ character.card.data.name || "未命名角色" }}
-            </h3>
-            <p class="text-sm text-gray-600 mt-1 line-clamp-2">
+        <div class="space-y-3 p-4">
+            <p class="text-sm leading-6 text-slate-600 line-clamp-3 min-h-[4.5rem]">
                 {{ character.card.data.description || "暂无描述" }}
             </p>
-            <p class="text-xs text-gray-500 mt-1 line-clamp-2">
-                {{ character.card.data.character_version || "暂无版本" }}
-            </p>
+            <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                <span class="truncate">{{ character.meta.updatedAt ? "最近更新" : "等待完善" }}</span>
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">进入编辑</span>
+            </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-.line-clamp-2 {
+.line-clamp-1,
+.line-clamp-2,
+.line-clamp-3 {
     display: -webkit-box;
-    -line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+.line-clamp-1 {
+    -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+    -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+    -webkit-line-clamp: 3;
 }
 </style>

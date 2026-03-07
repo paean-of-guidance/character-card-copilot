@@ -1,205 +1,313 @@
 <template>
-    <div class="flex gap-3">
-        <textarea
-            ref="textareaRef"
-            v-model="userInput"
-            @input="handleInput"
-            @keydown="handleKeydown"
-            :disabled="disabled"
-            placeholder="输入消息... (Enter发送，Shift+Enter换行)"
-            class="chat-input-textarea flex-1 resize-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-            style="
-                height: 40px;
-                min-height: 40px;
-                max-height: 120px;
-                line-height: 24px;
-            "
-        ></textarea>
-
-        <button
-            @click="handleSend"
-            :disabled="!userInput.trim() || disabled"
-            class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-full transition-colors flex items-center justify-center self-end w-10 h-10"
-            title="发送消息"
-        >
-            <svg
-                v-if="!loading"
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+    <div class="composer-shell">
+        <div class="composer-input-wrap">
+            <textarea
+                ref="textareaRef"
+                v-model="userInput"
+                :disabled="disabled"
+                placeholder="输入消息…"
+                class="chat-input-textarea"
+                @input="handleInput"
+                @keydown="handleKeydown"
+            ></textarea>
+            <button
+                :disabled="!userInput.trim() || disabled"
+                class="send-button"
+                title="发送消息"
+                @click="handleSend"
             >
-                <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                />
-            </svg>
-            <div
-                v-else
-                class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-            ></div>
-        </button>
+                <svg
+                    v-if="!loading"
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
+                </svg>
+                <div
+                    v-else
+                    class="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"
+                ></div>
+            </button>
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { useTextareaAutosize } from '@vueuse/core';
+import { nextTick, onMounted, ref, watch } from 'vue';
 
 interface Props {
-    /** 是否禁用输入 */
     disabled?: boolean;
-    /** 是否加载中 */
     loading?: boolean;
-    /** 命令面板是否打开 */
     commandPaletteOpen?: boolean;
 }
 
 interface Emits {
-    /** 发送消息 */
     send: [message: string];
-    /** 打开命令面板 */
     openCommandPalette: [];
-    /** 键盘事件（用于命令面板导航） */
     keydown: [event: KeyboardEvent];
-    /** 输入变化 */
     input: [value: string];
 }
 
 const props = withDefaults(defineProps<Props>(), {
     disabled: false,
     loading: false,
-    commandPaletteOpen: false
+    commandPaletteOpen: false,
 });
 
 const emit = defineEmits<Emits>();
 
-// 状态
 const userInput = ref('');
-const textareaRef = ref<HTMLTextAreaElement>();
-const inputRows = ref(1);
-const MIN_TEXTAREA_HEIGHT = 40;
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const MIN_TEXTAREA_HEIGHT = 48;
 const LINE_HEIGHT = 24;
 const MAX_ROWS = 5;
-const MAX_HEIGHT = LINE_HEIGHT * MAX_ROWS;
+let heightAnimationFrame: number | null = null;
+const { triggerResize } = useTextareaAutosize({
+    element: textareaRef,
+    input: userInput,
+});
 
-/**
- * 自动调整输入框高度
- */
-function adjustTextareaHeight() {
+function resolveTextareaMaxHeight(textarea: HTMLTextAreaElement): number {
+    const computedStyle = window.getComputedStyle(textarea);
+    const paddingTop = Number.parseFloat(computedStyle.paddingTop || '0');
+    const paddingBottom = Number.parseFloat(computedStyle.paddingBottom || '0');
+
+    return LINE_HEIGHT * MAX_ROWS + paddingTop + paddingBottom;
+}
+
+function syncTextareaLayout() {
     nextTick(() => {
-        if (!textareaRef.value) return;
-        const textarea = textareaRef.value;
+        if (!textareaRef.value) {
+            return;
+        }
 
-        textarea.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-        const scrollHeight = textarea.scrollHeight;
-        const newHeight = Math.min(scrollHeight, MAX_HEIGHT);
-        textarea.style.height = `${Math.max(newHeight, MIN_TEXTAREA_HEIGHT)}px`;
-        const estimatedRows = Math.ceil(newHeight / LINE_HEIGHT);
-        inputRows.value = Math.min(Math.max(estimatedRows, 1), MAX_ROWS);
+        const textarea = textareaRef.value;
+        const maxHeight = resolveTextareaMaxHeight(textarea);
+        const previousHeight = textarea.getBoundingClientRect().height || MIN_TEXTAREA_HEIGHT;
+
+        textarea.style.height = 'auto';
+        textarea.style.minHeight = `${MIN_TEXTAREA_HEIGHT}px`;
+        textarea.style.maxHeight = `${maxHeight}px`;
+        const nextHeight = Math.max(MIN_TEXTAREA_HEIGHT, Math.min(textarea.scrollHeight, maxHeight));
+
+        if (heightAnimationFrame !== null) {
+            cancelAnimationFrame(heightAnimationFrame);
+        }
+
+        if (Math.abs(previousHeight - nextHeight) > 1) {
+            textarea.style.height = `${previousHeight}px`;
+            heightAnimationFrame = requestAnimationFrame(() => {
+                textarea.style.height = `${nextHeight}px`;
+                heightAnimationFrame = null;
+            });
+        } else {
+            textarea.style.height = `${nextHeight}px`;
+        }
+
+        textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
     });
 }
 
-/**
- * 处理用户输入
- */
-function handleInput() {
-    emit('input', userInput.value);
-    if (userInput.value) {
-        adjustTextareaHeight();
-    } else if (textareaRef.value) {
-        textareaRef.value.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-        inputRows.value = 1;
-    }
+function resetTextarea() {
+    triggerResize();
+    syncTextareaLayout();
 }
 
-/**
- * 处理键盘事件
- */
+function handleInput() {
+    emit('input', userInput.value);
+}
+
 function handleKeydown(event: KeyboardEvent) {
-    // 如果命令面板打开，将键盘事件委托给父组件处理
     if (props.commandPaletteOpen) {
-        if (
-            ['ArrowUp', 'ArrowDown', 'Enter', 'Tab', ' ', 'Escape'].includes(
-                event.key
-            )
-        ) {
+        if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab', ' ', 'Escape'].includes(event.key)) {
             emit('keydown', event);
             return;
         }
     }
 
-    // 检测"/"键触发命令面板
-    // 当且仅当输入框完全为空时，按下"/"才触发命令面板
     if (event.key === '/' && userInput.value === '') {
         event.preventDefault();
         emit('openCommandPalette');
         return;
     }
 
-    // 普通发送消息逻辑（Shift+Enter换行，Enter发送）
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         handleSend();
     }
 }
 
-/**
- * 发送消息
- */
 function handleSend() {
     const message = userInput.value.trim();
-    if (!message || props.disabled) return;
+    if (!message || props.disabled) {
+        return;
+    }
 
     emit('send', message);
-
-    // 清空输入框并重置高度
     userInput.value = '';
-    if (textareaRef.value) {
-        textareaRef.value.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-    }
-    inputRows.value = 1;
+    resetTextarea();
 }
 
-/**
- * 设置输入框值（用于命令面板）
- */
 function setValue(value: string) {
     userInput.value = value;
-    if (textareaRef.value) {
-        textareaRef.value.focus();
-    }
+    triggerResize();
+    syncTextareaLayout();
+    textareaRef.value?.focus();
 }
 
-/**
- * 清空输入框
- */
 function clear() {
     userInput.value = '';
-    if (textareaRef.value) {
-        textareaRef.value.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-    }
-    inputRows.value = 1;
+    resetTextarea();
 }
 
-// 暴露方法供父组件调用
 defineExpose({
     setValue,
-    clear
+    clear,
+});
+
+watch(userInput, () => {
+    triggerResize();
+    syncTextareaLayout();
+});
+
+onMounted(() => {
+    triggerResize();
+    syncTextareaLayout();
 });
 </script>
 
 <style scoped>
-textarea {
-    font-family: inherit;
+.composer-shell {
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    border-radius: 1.5rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74) 0%, rgba(255, 255, 255, 0.46) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.82),
+        0 18px 34px rgba(148, 163, 184, 0.12);
+    padding: 0.5rem;
+    backdrop-filter: blur(20px);
 }
 
-textarea:focus {
-    outline: none;
+.composer-input-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0.625rem;
+    width: 100%;
+    min-width: 0;
+    border-radius: 1.125rem;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    padding: 0.3125rem;
 }
 
 .chat-input-textarea {
-    transition: height 0.2s ease, min-height 0.2s ease;
+    width: 100%;
+    resize: none;
+    overflow-y: hidden;
+    border: none;
+    background: transparent;
+    padding: 0.625rem 0.75rem;
+    color: #0f172a;
+    font-size: 0.95rem;
+    transition: height 0.18s ease;
+    display: block;
+    box-sizing: border-box;
+    line-height: 24px;
+    min-height: 48px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.82) transparent;
+}
+
+.chat-input-textarea::placeholder {
+    color: #94a3b8;
+}
+
+.chat-input-textarea:focus {
+    outline: none;
+}
+
+.chat-input-textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.send-button {
+    display: inline-flex;
+    height: 2.75rem;
+    width: 2.75rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(191, 219, 254, 0.95);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(239, 246, 255, 0.88) 0%, rgba(219, 234, 254, 0.72) 100%);
+    color: #5b7aa6;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        0 10px 24px rgba(96, 165, 250, 0.18),
+        0 0 0 1px rgba(255, 255, 255, 0.38);
+    backdrop-filter: blur(16px);
+    align-self: end;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        opacity 0.15s ease,
+        color 0.15s ease,
+        background 0.15s ease;
+}
+
+.send-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    color: #3b82f6;
+    background: linear-gradient(180deg, rgba(239, 246, 255, 0.94) 0%, rgba(191, 219, 254, 0.82) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 14px 28px rgba(96, 165, 250, 0.24),
+        0 0 0 1px rgba(191, 219, 254, 0.42);
+}
+
+.send-button:disabled {
+    cursor: not-allowed;
+    border-color: rgba(226, 232, 240, 0.95);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.86) 0%, rgba(241, 245, 249, 0.72) 100%);
+    color: #94a3b8;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.86),
+        0 8px 18px rgba(148, 163, 184, 0.08);
+}
+
+.chat-input-textarea::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-input-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-input-textarea::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.78);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+@media (max-width: 640px) {
+    .composer-input-wrap {
+        gap: 0.5rem;
+    }
+
+    .send-button {
+        height: 2.5rem;
+        width: 2.5rem;
+    }
 }
 </style>

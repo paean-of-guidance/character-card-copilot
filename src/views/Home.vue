@@ -22,6 +22,8 @@ const characters = computed(() => {
     return characterStore.characters.filter(c => c && c.uuid);
 });
 
+const characterCount = computed(() => characters.value.length);
+
 onMounted(async () => {
     appStore.setPageTitle("首页", false);
     await characterStore.loadAllCharacters(true); // 强制加载
@@ -109,22 +111,78 @@ async function handleImportCharacter() {
 </script>
 
 <template>
-    <div class="home h-full min-h-0 w-full overflow-y-auto">
-        <div v-if="loading" class="flex h-full min-h-64 items-center justify-center">
-            <div class="text-gray-600">加载中...</div>
-        </div>
+    <div class="home h-full min-h-0 w-full overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.10),_transparent_32%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)]">
+        <div class="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6 lg:py-8">
+            <section class="rounded-[28px] border border-white/70 bg-white/75 p-6 shadow-[0_16px_50px_rgba(148,163,184,0.16)] backdrop-blur-xl lg:p-8">
+                <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                    <div class="max-w-3xl space-y-3">
+                        <div class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                            Character Workspace
+                        </div>
+                        <div class="space-y-2">
+                            <h1 class="text-2xl font-semibold tracking-tight text-slate-900 lg:text-3xl">
+                                你的角色库工作台
+                            </h1>
+                            <p class="max-w-2xl text-sm leading-6 text-slate-600 lg:text-base">
+                                在这里集中管理角色卡、快速创建新角色，并继续进入编辑与 Copilot 协作流程。
+                            </p>
+                        </div>
+                    </div>
 
-        <div v-else class="character-grid p-4">
-            <CharacterCard
-                v-for="character in characters"
-                :key="character.uuid"
-                :character="character"
-                @click="handleCharacterClick"
-            />
-            <NewCharacterCard
-                @create-new="handleNewCharacter"
-                @import="handleImportCharacter"
-            />
+                    <div class="grid gap-3 lg:min-w-[10rem]">
+                        <div class="rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 shadow-sm">
+                            <div class="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                                总角色数
+                            </div>
+                            <div class="mt-2 text-2xl font-semibold text-slate-900">
+                                {{ characterCount }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div v-if="loading" class="character-grid">
+                <div
+                    v-for="index in 6"
+                    :key="index"
+                    class="overflow-hidden rounded-[24px] border border-white/60 bg-white/70 shadow-[0_12px_32px_rgba(148,163,184,0.14)] backdrop-blur"
+                >
+                    <div class="aspect-square animate-pulse bg-slate-200/80"></div>
+                    <div class="space-y-3 p-4">
+                        <div class="h-5 w-2/3 animate-pulse rounded-full bg-slate-200/80"></div>
+                        <div class="h-4 w-full animate-pulse rounded-full bg-slate-200/70"></div>
+                        <div class="h-4 w-5/6 animate-pulse rounded-full bg-slate-200/70"></div>
+                    </div>
+                </div>
+            </div>
+
+            <section
+                v-else
+                class="rounded-[28px] border border-white/65 bg-white/55 p-4 shadow-[0_16px_40px_rgba(148,163,184,0.14)] backdrop-blur-xl lg:p-5"
+            >
+                <div class="mb-4 flex items-center justify-between gap-3 px-2">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900">角色列表</h2>
+                        <p class="mt-1 text-sm text-slate-500">
+                            点击任意角色卡片，继续编辑设定与 AI 协作。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="character-grid">
+                    <CharacterCard
+                        v-for="character in characters"
+                        :key="character.uuid"
+                        :character="character"
+                        @click="handleCharacterClick"
+                    />
+                    <NewCharacterCard
+                        @create-new="handleNewCharacter"
+                        @import="handleImportCharacter"
+                    />
+                </div>
+            </section>
         </div>
     </div>
 </template>
@@ -136,8 +194,8 @@ async function handleImportCharacter() {
 
 .character-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.25rem;
     align-content: start;
 }
 </style>

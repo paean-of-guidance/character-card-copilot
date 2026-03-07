@@ -20,6 +20,7 @@
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@types/markdown-it": "^14.1.2",
+    "@vueuse/core": "^14.2.1",
     "gpt-tokenizer": "^3.4.0",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",

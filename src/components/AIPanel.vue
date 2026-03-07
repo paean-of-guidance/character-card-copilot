@@ -6,6 +6,9 @@ import CommandPalette from "./CommandPalette.vue";
 import Modal from "./Modal.vue";
 import ToolExecutionCard from "./ToolExecutionCard.vue";
 import ChatInput from "./ai/ChatInput.vue";
+import AIPanelHeader from "./ai/AIPanelHeader.vue";
+import AIPanelStatusChips from "./ai/AIPanelStatusChips.vue";
+import AIPanelEmptyState from "./ai/AIPanelEmptyState.vue";
 import MessageBubble from "./ai/MessageBubble.vue";
 import type { CommandMetadata } from "@/types/commands";
 import type { ModalOptions } from "@/utils/notification";
@@ -43,7 +46,7 @@ const { enabledApis, defaultApi, selectedProfile } = storeToRefs(apiStore);
 const {
     aiRoles,
     currentRoleConfig,
-    defaultRole,
+    lastTokenStats,
     selectedRole: selectedRoleState,
     currentSessionUUID,
     isBackendSessionActive,
@@ -104,6 +107,17 @@ const groupedMessages = useMessageGrouping(messages);
 const hasStreamingAssistant = computed(() =>
     messages.value.some((message) => message.role === 'assistant' && message.isStreaming),
 );
+const currentRoleName = computed(() => currentRoleConfig.value?.name || selectedRole.value || '未选择');
+const contextUsageLabel = computed(() => {
+    const budgetUtilization = Number(lastTokenStats.value?.budget_utilization);
+
+    if (!Number.isFinite(budgetUtilization) || budgetUtilization <= 0) {
+        return '未计算';
+    }
+
+    const rounded = budgetUtilization >= 10 ? Math.round(budgetUtilization) : Number(budgetUtilization.toFixed(1));
+    return `${rounded}% 已使用`;
+});
 
 // 切换显示/隐藏
 function togglePanel() {
@@ -793,94 +807,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div v-if="visible" class="card rounded-xl w-1/2 bg-white p-6 shadow-2xl">
-        <div class="h-full flex flex-col">
-            <!-- 面板头部 -->
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
-                    <h2 class="text-sm font-semibold text-gray-900">
-                        <span v-if="panelType === 'ai'">Copilot</span>
-                        <span v-else-if="panelType === 'chat'">对话</span>
-                        <span v-else-if="panelType === 'tools'">工具</span>
-                        <span v-else>AI Panel</span>
-                    </h2>
-
-                    <!-- AI角色选择器 -->
-                    <select
-                        v-model="selectedRole"
-                        class="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white"
-                        :disabled="aiRoles.length === 0"
-                    >
-                        <option value="" disabled>选择AI角色</option>
-                        <option
-                            v-for="role in aiRoles"
-                            :key="role.id"
-                            :value="role.id"
-                        >
-                            {{ role.role.name }}
-                            <span
-                                v-if="role.id === defaultRole"
-                                class="text-blue-500"
-                                >(默认)</span
-                            >
-                        </option>
-                    </select>
-
-                    <!-- API配置选择器 -->
-                    <select
-                        v-model="selectedApi"
-                        class="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white"
-                        :disabled="apiConfigs.length === 0"
-                    >
-                        <option value="" disabled>选择API配置</option>
-                        <option
-                            v-for="config in apiConfigs"
-                            :key="config.profile"
-                            :value="config.profile"
-                        >
-                            {{ config.profile }} ({{ config.model }})
-                        </option>
-                    </select>
-                </div>
-
-                <button
-                    @click="togglePanel"
-                    class="text-gray-400 hover:text-gray-600 transition-colors"
-                    title="隐藏面板"
-                >
-                    <svg
-                        class="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
-                    </svg>
-                </button>
-            </div>
+    <div
+        v-if="visible"
+        class="card flex w-[min(50%,42rem)] min-w-[24rem] max-w-[42rem] flex-shrink-0 rounded-[28px] border border-white/70 bg-white/78 p-4 shadow-[0_22px_55px_rgba(148,163,184,0.22)] backdrop-blur-xl lg:p-5"
+    >
+        <div class="flex h-full min-h-0 flex-col gap-4">
+            <AIPanelHeader @toggle="togglePanel" />
 
             <!-- 对话消息区域 -->
             <div
                 ref="chatMessagesRef"
-                class="flex-1 overflow-y-auto mb-4 border border-gray-200 rounded-lg p-4 bg-gray-50"
+                class="flex-1 overflow-y-auto rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95)_0%,_rgba(241,245,249,0.92)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
             >
-                <div
-                    v-if="messages.length === 0"
-                    class="flex items-center justify-center h-full text-gray-500"
-                >
-                    <div class="text-center">
-                        <div class="text-4xl mb-2">💬</div>
-                        <p class="text-sm">开始与AI助手对话</p>
-                        <p class="text-xs text-gray-400 mt-1">
-                            基于当前角色数据进行智能分析
-                        </p>
-                    </div>
-                </div>
+                <AIPanelEmptyState v-if="messages.length === 0" />
 
                 <div v-else class="space-y-4">
                     <div
@@ -936,18 +875,18 @@ onUnmounted(() => {
                     <!-- 加载中指示器 -->
                     <div v-if="aiStore.isLoading && !hasStreamingAssistant" class="flex justify-start">
                         <div
-                            class="bg-white border border-gray-200 rounded-lg rounded-bl-sm px-4 py-2"
+                            class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 shadow-sm"
                         >
                             <div class="flex items-center gap-2">
                                 <div
-                                    class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
                                 ></div>
                                 <div
-                                    class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
                                     style="animation-delay: 0.1s"
                                 ></div>
                                 <div
-                                    class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
                                     style="animation-delay: 0.2s"
                                 ></div>
                             </div>
@@ -957,7 +896,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 用户输入区域 -->
-            <div class="border-t border-gray-200 pt-4 relative">
+            <div class="relative">
                 <!-- 命令面板 -->
                 <CommandPalette
                     ref="commandPaletteRef"
@@ -978,26 +917,18 @@ onUnmounted(() => {
                     @keydown="handleInputKeydown"
                     @input="handleInputChange"
                 />
-
-                <!-- 状态提示 -->
-                <div class="flex justify-between items-center mt-2">
-                    <div class="text-xs text-gray-500 flex gap-4">
-                        <span v-if="selectedRole">
-                            角色: {{ currentRoleConfig?.name || selectedRole }}
-                        </span>
-                        <span v-else class="text-orange-500">请选择AI角色</span>
-                        <span v-if="selectedApi">API: {{ selectedApi }}</span>
-                        <span
-                            v-else-if="apiConfigs.length === 0"
-                            class="text-orange-500"
-                            >请配置API</span
-                        >
-                    </div>
-                    <div class="text-xs text-gray-400">
-                        {{ characterData ? "已加载角色数据" : "无角色数据" }}
-                    </div>
-                </div>
             </div>
+
+            <AIPanelStatusChips
+                :selected-role="selectedRole"
+                :selected-api="selectedApi"
+                :current-role-name="currentRoleName"
+                :ai-roles="aiRoles"
+                :api-configs="apiConfigs"
+                :context-usage-label="contextUsageLabel"
+                @update:selected-role="selectedRole = $event"
+                @update:selected-api="selectedApi = $event"
+            />
         </div>
 
         <!-- 命令确认对话框 -->
@@ -1068,16 +999,4 @@ onUnmounted(() => {
     animation: spin 1s linear infinite;
 }
 
-/* 选择器样式 */
-select {
-    transition:
-        border-color 0.15s ease-in-out,
-        box-shadow 0.15s ease-in-out;
-}
-
-select:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
 </style>
