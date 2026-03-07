@@ -54,10 +54,7 @@ pub async fn cleanup_expired_sessions(max_age_hours: u64) -> Result<usize, Strin
 
 /// 删除指定索引的消息
 #[tauri::command]
-pub async fn delete_chat_message(
-    app_handle: tauri::AppHandle,
-    index: usize,
-) -> Result<(), String> {
+pub async fn delete_chat_message(app_handle: tauri::AppHandle, index: usize) -> Result<(), String> {
     SessionService::delete_chat_message(&app_handle, index).await
 }
 
@@ -82,4 +79,3 @@ pub async fn regenerate_last_message(app_handle: tauri::AppHandle) -> Result<(),
 pub async fn continue_chat(app_handle: tauri::AppHandle) -> Result<(), String> {
     SessionService::continue_chat(&app_handle).await
 }
-

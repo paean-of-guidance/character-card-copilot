@@ -203,11 +203,11 @@ impl CharacterStorage {
         thumbnail_path: &Path,
         image_bytes: &[u8],
     ) -> Result<(), String> {
-        let image = image::load_from_memory(image_bytes)
-            .map_err(|e| format!("解析图片失败: {}", e))?;
+        let image =
+            image::load_from_memory(image_bytes).map_err(|e| format!("解析图片失败: {}", e))?;
 
-        let mut card_file = fs::File::create(card_path)
-            .map_err(|e| format!("写入背景图片失败: {}", e))?;
+        let mut card_file =
+            fs::File::create(card_path).map_err(|e| format!("写入背景图片失败: {}", e))?;
         image
             .write_to(&mut card_file, ImageFormat::Png)
             .map_err(|e| format!("写入背景图片失败: {}", e))?;
@@ -218,8 +218,8 @@ impl CharacterStorage {
     /// 写入缩略图
     fn write_thumbnail(image: &DynamicImage, thumbnail_path: &Path) -> Result<(), String> {
         let resized = image.resize(320, 320, FilterType::Triangle);
-        let mut thumb_file = fs::File::create(thumbnail_path)
-            .map_err(|e| format!("写入缩略图失败: {}", e))?;
+        let mut thumb_file =
+            fs::File::create(thumbnail_path).map_err(|e| format!("写入缩略图失败: {}", e))?;
         resized
             .write_to(&mut thumb_file, ImageFormat::Png)
             .map_err(|e| format!("写入缩略图失败: {}", e))
@@ -288,8 +288,8 @@ impl CharacterStorage {
             };
 
             if resolved_path.exists() && resolved_path != card_path {
-                let image_bytes = fs::read(&resolved_path)
-                    .map_err(|e| format!("读取背景图片失败: {}", e))?;
+                let image_bytes =
+                    fs::read(&resolved_path).map_err(|e| format!("读取背景图片失败: {}", e))?;
                 Self::write_card_and_thumbnail(&card_path, &thumbnail_path, &image_bytes)?;
                 character_data.background_path = CARD_FILE_NAME.to_string();
                 character_data.thumbnail_path = THUMBNAIL_FILE_NAME.to_string();
@@ -610,14 +610,13 @@ impl CharacterStorage {
         let card_image_path = Self::get_card_image_path(app_handle, uuid)?;
 
         if card_image_path.exists() {
-            let image_data = fs::read(&card_image_path)
-                .map_err(|e| format!("读取背景图片失败: {}", e))?;
+            let image_data =
+                fs::read(&card_image_path).map_err(|e| format!("读取背景图片失败: {}", e))?;
 
             // 将角色卡数据写入 PNG
-            let output_bytes = PngMetadataUtils::write_character_data_to_bytes(
-                &image_data,
-                &card_json,
-            ).map_err(|e| format!("写入 PNG 元数据失败: {}", e))?;
+            let output_bytes =
+                PngMetadataUtils::write_character_data_to_bytes(&image_data, &card_json)
+                    .map_err(|e| format!("写入 PNG 元数据失败: {}", e))?;
 
             // 保存到文件
             fs::write(output_path, output_bytes)
@@ -626,8 +625,7 @@ impl CharacterStorage {
             Ok("png".to_string())
         } else {
             // 没有图片，直接导出 JSON
-            fs::write(output_path, card_json)
-                .map_err(|e| format!("保存 JSON 文件失败: {}", e))?;
+            fs::write(output_path, card_json).map_err(|e| format!("保存 JSON 文件失败: {}", e))?;
 
             Ok("json".to_string())
         }
@@ -646,8 +644,7 @@ impl CharacterStorage {
         file_path: &str,
     ) -> Result<CharacterData, String> {
         // 读取文件
-        let file_data = fs::read(file_path)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+        let file_data = fs::read(file_path).map_err(|e| format!("读取文件失败: {}", e))?;
 
         // 判断文件类型
         let is_png = file_path.ends_with(".png");
@@ -664,8 +661,8 @@ impl CharacterStorage {
         };
 
         // 解析 TavernCardV2
-        let card: TavernCardV2 = serde_json::from_str(&card_json)
-            .map_err(|e| format!("解析角色卡数据失败: {}", e))?;
+        let card: TavernCardV2 =
+            serde_json::from_str(&card_json).map_err(|e| format!("解析角色卡数据失败: {}", e))?;
 
         // 生成新的 UUID 和元数据
         let uuid = FileUtils::generate_uuid();
@@ -731,8 +728,8 @@ impl CharacterStorage {
         };
 
         // 解析 TavernCardV2
-        let card: TavernCardV2 = serde_json::from_str(&card_json)
-            .map_err(|e| format!("解析角色卡数据失败: {}", e))?;
+        let card: TavernCardV2 =
+            serde_json::from_str(&card_json).map_err(|e| format!("解析角色卡数据失败: {}", e))?;
 
         // 生成新的 UUID 和元数据
         let uuid = FileUtils::generate_uuid();

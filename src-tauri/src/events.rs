@@ -1,17 +1,10 @@
+use crate::ai_chat::{MessageRole, ToolCallData};
 use crate::backend::domain::{
-    CharacterLoadedPayload,
-    CharacterUpdatedPayload,
-    CharacterUpdateType,
-    ChatHistoryLoadedPayload,
-    ContextBuiltPayload,
-    MessageReceivedPayload,
-    MessageSentPayload,
-    SessionInfo,
-    SessionUnloadReason,
-    SessionUnloadedPayload,
-    TokenStatsPayload,
-    TokenUsageStats,
-    ToolExecutedPayload,
+    CharacterLoadedPayload, CharacterUpdateType, CharacterUpdatedPayload, ChatHistoryLoadedPayload,
+    ContextBuiltPayload, MessageReasoningDeltaPayload, MessageReceivedPayload,
+    MessageSentPayload, MessageStreamDeltaPayload, ReasoningDeltaKind, SessionInfo,
+    SessionUnloadReason, SessionUnloadedPayload, TokenStatsPayload, TokenUsageStats,
+    ToolExecutedPayload, ToolExecutionPhase, ToolExecutionStatusPayload,
 };
 use crate::character_storage::CharacterData;
 use crate::chat_history::ChatMessage;
@@ -82,17 +75,98 @@ impl EventEmitter {
         app: &AppHandle,
         uuid: &str,
         message: &ChatMessage,
+        target_message_id: Option<&str>,
         intermediate_messages: Option<Vec<ChatMessage>>,
     ) -> Result<(), String> {
         let payload = MessageReceivedPayload {
             uuid: uuid.to_string(),
             message: message.clone(),
+            target_message_id: target_message_id.map(|value| value.to_string()),
             timestamp: chrono::Utc::now().timestamp(),
             intermediate_messages,
         };
 
         app.emit("message-received", &payload)
             .map_err(|e| format!("发送接收消息事件失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn send_message_stream_delta(
+        app: &AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        role: MessageRole,
+        delta: &str,
+        is_finished: bool,
+        is_aborted: bool,
+    ) -> Result<(), String> {
+        let payload = MessageStreamDeltaPayload {
+            uuid: uuid.to_string(),
+            role,
+            target_message_id: target_message_id.to_string(),
+            delta: delta.to_string(),
+            is_finished,
+            is_aborted,
+            timestamp: chrono::Utc::now().timestamp(),
+        };
+
+        app.emit("message-stream-delta", &payload)
+            .map_err(|e| format!("发送流式消息事件失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn send_message_reasoning_delta(
+        app: &AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        delta: &str,
+        kind: ReasoningDeltaKind,
+        is_finished: bool,
+        is_aborted: bool,
+    ) -> Result<(), String> {
+        let payload = MessageReasoningDeltaPayload {
+            uuid: uuid.to_string(),
+            target_message_id: target_message_id.to_string(),
+            delta: delta.to_string(),
+            kind,
+            is_finished,
+            is_aborted,
+            timestamp: chrono::Utc::now().timestamp(),
+        };
+
+        app.emit("message-reasoning-delta", &payload)
+            .map_err(|e| format!("发送 reasoning 流式消息事件失败: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn send_tool_execution_status(
+        app: &AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        tool_call: &ToolCallData,
+        phase: ToolExecutionPhase,
+        result: Option<serde_json::Value>,
+        error: Option<String>,
+        execution_time_ms: Option<u64>,
+    ) -> Result<(), String> {
+        let payload = ToolExecutionStatusPayload {
+            uuid: uuid.to_string(),
+            target_message_id: target_message_id.to_string(),
+            tool_call_id: tool_call.id.clone(),
+            tool_name: tool_call.function.name.clone(),
+            phase,
+            tool_call: Some(tool_call.clone()),
+            result,
+            error,
+            execution_time_ms,
+            timestamp: chrono::Utc::now().timestamp(),
+        };
+
+        app.emit("tool-execution-status", &payload)
+            .map_err(|e| format!("发送工具状态事件失败: {}", e))?;
 
         Ok(())
     }
@@ -221,4 +295,3 @@ impl EventEmitter {
         Ok(())
     }
 }
-

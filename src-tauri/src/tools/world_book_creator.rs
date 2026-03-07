@@ -1,6 +1,8 @@
 use super::AIToolTrait;
-use crate::ai_chat::{ChatTool, ToolFunction, ToolParameter as ChatToolParameter, ToolParameters};
-use crate::ai_tools::{ToolCallRequest, ToolResult};
+use crate::ai_tools::{
+    ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
+    ToolParameters, ToolResult,
+};
 use crate::character_storage::{CharacterBook, CharacterStorage, WorldBookEntry};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -310,7 +312,7 @@ impl AIToolTrait for CreateWorldBookEntryTool {
         }
     }
 
-    fn to_chat_tool(&self) -> ChatTool {
+    fn to_tool_definition(&self) -> ToolDefinition {
         let mut properties = HashMap::new();
 
         // 提示字段
@@ -475,7 +477,7 @@ impl AIToolTrait for CreateWorldBookEntryTool {
             },
         );
 
-        ChatTool {
+        ToolDefinition {
             tool_type: "function".to_string(),
             function: ToolFunction {
                 name: self.name().to_string(),

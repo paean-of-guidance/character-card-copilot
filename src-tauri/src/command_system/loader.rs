@@ -9,7 +9,8 @@ pub async fn register_builtin_commands() -> usize {
             COMMAND_REGISTRY.register((descriptor.builder)()).await;
             crate::debug_log!(
                 "➡️ 已注册命令 {} ({})",
-                descriptor.id, descriptor.description
+                descriptor.id,
+                descriptor.description
             );
             registered += 1;
         } else {

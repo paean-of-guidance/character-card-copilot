@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::backend::domain::{CommandMetadata, CommandResult};
+use async_trait::async_trait;
 
 /// 命令执行上下文
 #[derive(Debug, Clone)]

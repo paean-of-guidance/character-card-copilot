@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useApiStore } from '@/stores/api';
-import type { ApiConfig } from '@/types/api';
+import type { ApiConfig, ApiProvider } from '@/types/api';
 
 const emit = defineEmits<{
   created: [api: ApiConfig];
@@ -10,8 +10,16 @@ const emit = defineEmits<{
 
 const apiStore = useApiStore();
 const profileName = ref('');
+const provider = ref<ApiProvider>('open_ai_compatible');
 const loading = ref(false);
 const error = ref('');
+
+const providerBaseUrls: Record<ApiProvider, string> = {
+  open_ai_compatible: 'https://api.openai.com/v1',
+  open_ai_responses: 'https://api.openai.com/v1',
+  claude: 'https://api.anthropic.com',
+  gemini_v1_beta: 'https://generativelanguage.googleapis.com/v1beta',
+}
 
 function validateProfileName(): string | null {
   const trimmed = profileName.value.trim();
@@ -44,8 +52,9 @@ async function handleCreate() {
   try {
     const newApi = await apiStore.createApi({
       profile: profileName.value.trim(),
-      endpoint: '',
-      key: '',
+      provider: provider.value,
+      base_url: providerBaseUrls[provider.value],
+      api_key: '',
       model: '',
       default: false,
       enabled: false,
@@ -76,10 +85,27 @@ function handleInput() {
     <div class="dialog">
       <div class="dialog-header">
         <h2 class="text-xl font-semibold text-gray-800">新建 API 配置</h2>
-        <p class="mt-1 text-sm text-gray-500">先创建名称，随后在详情面板中补全端点、密钥与模型。</p>
+        <p class="mt-1 text-sm text-gray-500">先选择 provider 和名称，随后在详情面板中补全 Base URL、密钥与模型。</p>
       </div>
 
       <div class="dialog-body">
+        <div class="form-group">
+          <label for="provider" class="form-label">
+            Provider <span class="text-red-500">*</span>
+          </label>
+          <select
+            id="provider"
+            v-model="provider"
+            class="form-input"
+            :disabled="loading"
+          >
+            <option value="open_ai_compatible">OpenAI Compatible</option>
+            <option value="open_ai_responses">OpenAI Responses</option>
+            <option value="claude">Claude</option>
+            <option value="gemini_v1_beta">Gemini v1beta</option>
+          </select>
+        </div>
+
         <div class="form-group">
           <label for="profile-name" class="form-label">
             API配置名称 <span class="text-red-500">*</span>

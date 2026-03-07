@@ -1,5 +1,5 @@
-use crate::backend::domain::{CommandMetadata, CommandResult};
 use super::command::{CommandContext, CommandExecutor};
+use crate::backend::domain::{CommandMetadata, CommandResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -52,10 +52,7 @@ impl CommandRegistry {
             return commands;
         }
 
-        let normalized_query = query
-            .to_lowercase()
-            .trim_start_matches('/')
-            .to_string();
+        let normalized_query = query.to_lowercase().trim_start_matches('/').to_string();
 
         commands
             .into_iter()

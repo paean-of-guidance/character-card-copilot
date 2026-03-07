@@ -15,14 +15,25 @@ const emit = defineEmits<{
 }>()
 
 const endpointLabel = computed(() => {
-  if (!props.api.endpoint) {
+  if (!props.api.base_url) {
     return '未设置端点'
   }
 
   try {
-    return new URL(props.api.endpoint).host
+    return new URL(props.api.base_url).host
   } catch {
-    return props.api.endpoint
+    return props.api.base_url
+  }
+})
+
+const providerLabel = computed(() => {
+  switch (props.api.provider) {
+    case 'claude':
+      return 'Claude'
+    case 'gemini_v1_beta':
+      return 'Gemini v1beta'
+    default:
+      return 'OpenAI Responses'
   }
 })
 
@@ -72,6 +83,9 @@ function handleDelete() {
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
           <span class="rounded-full bg-gray-100 px-2 py-1">
             {{ api.enabled ? '已启用' : '未启用' }}
+          </span>
+          <span class="rounded-full bg-gray-100 px-2 py-1">
+            {{ providerLabel }}
           </span>
           <span class="truncate rounded-full bg-gray-100 px-2 py-1">
             {{ api.model || '未设置模型' }}

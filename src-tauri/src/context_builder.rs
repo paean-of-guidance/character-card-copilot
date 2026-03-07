@@ -1,8 +1,8 @@
-use crate::chat_history::ChatMessage;
 use crate::backend::domain::{ContextBuilderOptions, TokenBudget};
 use crate::character_session::SESSION_MANAGER;
 use crate::character_storage::{CharacterBook, CharacterData, CharacterStorage};
 use crate::chat_history::ChatHistoryManager;
+use crate::chat_history::ChatMessage;
 use crate::token_counter::get_token_counter;
 use serde::{Deserialize, Serialize};
 
@@ -91,10 +91,8 @@ impl ContextBuilder {
             self.build_assistant_messages(character_data)?;
 
         // 3. 处理聊天历史
-        let history_messages = self.build_history_messages(
-            chat_history,
-            self.token_budget.history_reserved,
-        )?;
+        let history_messages =
+            self.build_history_messages(chat_history, self.token_budget.history_reserved)?;
         let history_tokens = self.count_messages_tokens(&history_messages);
 
         // 4. 处理当前用户消息
@@ -106,7 +104,8 @@ impl ContextBuilder {
             tool_call_id: None,
         });
 
-        let current_tokens = current_message.as_ref()
+        let current_tokens = current_message
+            .as_ref()
             .map(|msg| self.count_message_tokens(msg))
             .unwrap_or(0);
 
@@ -118,7 +117,8 @@ impl ContextBuilder {
             history: history_tokens,
         };
 
-        let total_tokens = system_tokens + character_tokens + worldbook_tokens + history_tokens + current_tokens;
+        let total_tokens =
+            system_tokens + character_tokens + worldbook_tokens + history_tokens + current_tokens;
         let was_truncated = total_tokens > self.options.token_limit;
 
         Ok(BuiltContextResult {
@@ -133,7 +133,10 @@ impl ContextBuilder {
     }
 
     /// 构建 System 消息（包含 role、task、tools、instructions）
-    fn build_system_messages(&self, character_data: &CharacterData) -> Result<Vec<OpenAIMessage>, String> {
+    fn build_system_messages(
+        &self,
+        character_data: &CharacterData,
+    ) -> Result<Vec<OpenAIMessage>, String> {
         let mut content = String::new();
 
         // 添加 AI 角色定义
@@ -171,7 +174,10 @@ impl ContextBuilder {
     }
 
     /// 构建 Assistant 消息（角色信息 + 世界书）
-    fn build_assistant_messages(&self, character_data: &CharacterData) -> Result<(Vec<OpenAIMessage>, usize, usize), String> {
+    fn build_assistant_messages(
+        &self,
+        character_data: &CharacterData,
+    ) -> Result<(Vec<OpenAIMessage>, usize, usize), String> {
         let mut messages = Vec::new();
 
         // 1. 构建角色信息消息
@@ -187,22 +193,23 @@ impl ContextBuilder {
         });
 
         // 2. 构建世界书消息（如果存在）
-        let (_worldbook_content, worldbook_tokens) = if let Some(character_book) = &character_data.card.data.character_book {
-            let worldbook_content = self.build_worldbook_content(character_book)?;
-            let worldbook_tokens = self.count_tokens(&worldbook_content);
+        let (_worldbook_content, worldbook_tokens) =
+            if let Some(character_book) = &character_data.card.data.character_book {
+                let worldbook_content = self.build_worldbook_content(character_book)?;
+                let worldbook_tokens = self.count_tokens(&worldbook_content);
 
-            messages.push(OpenAIMessage {
-                role: "assistant".to_string(),
-                content: format!("worldbook:\n{}", worldbook_content),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            });
+                messages.push(OpenAIMessage {
+                    role: "assistant".to_string(),
+                    content: format!("worldbook:\n{}", worldbook_content),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
 
-            (worldbook_content, worldbook_tokens)
-        } else {
-            (String::new(), 0)
-        };
+                (worldbook_content, worldbook_tokens)
+            } else {
+                (String::new(), 0)
+            };
 
         Ok((messages, character_tokens, worldbook_tokens))
     }
@@ -232,19 +239,31 @@ impl ContextBuilder {
             content.push_str(&format!("  mes_example: \"{}\"\n", card_data.mes_example));
         }
         if !card_data.creator_notes.is_empty() {
-            content.push_str(&format!("  creator_notes: \"{}\"\n", card_data.creator_notes));
+            content.push_str(&format!(
+                "  creator_notes: \"{}\"\n",
+                card_data.creator_notes
+            ));
         }
         if !card_data.system_prompt.is_empty() {
-            content.push_str(&format!("  system_prompt: \"{}\"\n", card_data.system_prompt));
+            content.push_str(&format!(
+                "  system_prompt: \"{}\"\n",
+                card_data.system_prompt
+            ));
         }
         if !card_data.post_history_instructions.is_empty() {
-            content.push_str(&format!("  post_history_instructions: \"{}\"\n", card_data.post_history_instructions));
+            content.push_str(&format!(
+                "  post_history_instructions: \"{}\"\n",
+                card_data.post_history_instructions
+            ));
         }
 
         // 标签
         if !card_data.tags.is_empty() {
-            content.push_str(&format!("  tags: [{}]\n",
-                card_data.tags.iter()
+            content.push_str(&format!(
+                "  tags: [{}]\n",
+                card_data
+                    .tags
+                    .iter()
                     .map(|tag| format!("\"{}\"", tag))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -256,7 +275,10 @@ impl ContextBuilder {
             content.push_str(&format!("  creator: \"{}\"\n", card_data.creator));
         }
         if !card_data.character_version.is_empty() {
-            content.push_str(&format!("  character_version: \"{}\"\n", card_data.character_version));
+            content.push_str(&format!(
+                "  character_version: \"{}\"\n",
+                card_data.character_version
+            ));
         }
 
         Ok(content)
@@ -284,14 +306,18 @@ impl ContextBuilder {
         }
 
         // 条目总数
-        content.push_str(&format!("  total_entries: {}\n", character_book.entries.len()));
+        content.push_str(&format!(
+            "  total_entries: {}\n",
+            character_book.entries.len()
+        ));
 
         // 条目内容（按重要性排序）
         content.push_str("  entries:\n");
         let mut processed_entries = Vec::new();
 
         for (index, entry) in character_book.entries.iter().enumerate() {
-            let entry_json = serde_json::to_value(entry).map_err(|e| format!("序列化条目失败: {}", e))?;
+            let entry_json =
+                serde_json::to_value(entry).map_err(|e| format!("序列化条目失败: {}", e))?;
             let entry_obj = entry_json.as_object().ok_or("条目不是对象类型")?;
             let entry_content = self.serialize_worldbook_entry(entry_obj, index)?;
             let token_count = self.count_tokens(&entry_content);
@@ -305,7 +331,8 @@ impl ContextBuilder {
         }
 
         // 按重要性排序
-        processed_entries.sort_by(|a, b| b.importance_score.partial_cmp(&a.importance_score).unwrap());
+        processed_entries
+            .sort_by(|a, b| b.importance_score.partial_cmp(&a.importance_score).unwrap());
 
         // 输出条目（考虑 Token 限制）
         let mut used_tokens = 0;
@@ -313,7 +340,7 @@ impl ContextBuilder {
             if used_tokens + processed_entry.token_count <= self.token_budget.worldbook_reserved {
                 let entry_content = self.serialize_worldbook_entry(
                     processed_entry.entry.as_object().unwrap(),
-                    0 // index 在这里不重要
+                    0, // index 在这里不重要
                 )?;
                 content.push_str(&entry_content);
                 used_tokens += processed_entry.token_count;
@@ -324,7 +351,11 @@ impl ContextBuilder {
     }
 
     /// 序列化世界书条目
-    fn serialize_worldbook_entry(&self, entry: &serde_json::Map<String, serde_json::Value>, _index: usize) -> Result<String, String> {
+    fn serialize_worldbook_entry(
+        &self,
+        entry: &serde_json::Map<String, serde_json::Value>,
+        _index: usize,
+    ) -> Result<String, String> {
         let mut content = String::new();
         content.push_str("    - {\n");
 
@@ -337,11 +368,13 @@ impl ContextBuilder {
         }
         if let Some(keys) = entry.get("keys").and_then(|v| v.as_array()) {
             content.push_str("      keys: [");
-            content.push_str(&keys.iter()
-                .filter_map(|v| v.as_str())
-                .map(|key| format!("\"{}\"", key))
-                .collect::<Vec<_>>()
-                .join(", ")
+            content.push_str(
+                &keys
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|key| format!("\"{}\"", key))
+                    .collect::<Vec<_>>()
+                    .join(", "),
             );
             content.push_str("],\n");
         }
@@ -360,11 +393,18 @@ impl ContextBuilder {
     }
 
     /// 计算条目重要性
-    fn calculate_entry_importance(&self, entry: &serde_json::Map<String, serde_json::Value>) -> f64 {
+    fn calculate_entry_importance(
+        &self,
+        entry: &serde_json::Map<String, serde_json::Value>,
+    ) -> f64 {
         let mut score = 1.0;
 
         // 启用状态权重
-        if entry.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true) {
+        if entry
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+        {
             score += 2.0;
         }
 
@@ -390,7 +430,11 @@ impl ContextBuilder {
     }
 
     /// 构建历史消息（智能裁剪）
-    fn build_history_messages(&self, chat_history: &[ChatMessage], token_limit: usize) -> Result<Vec<OpenAIMessage>, String> {
+    fn build_history_messages(
+        &self,
+        chat_history: &[ChatMessage],
+        token_limit: usize,
+    ) -> Result<Vec<OpenAIMessage>, String> {
         let mut messages = Vec::new();
         let mut used_tokens = 0;
 
@@ -450,7 +494,10 @@ impl ContextBuilder {
 
     /// 计算多个消息的 Token 数量
     fn count_messages_tokens(&self, messages: &[OpenAIMessage]) -> usize {
-        messages.iter().map(|msg| self.count_message_tokens(msg)).sum()
+        messages
+            .iter()
+            .map(|msg| self.count_message_tokens(msg))
+            .sum()
     }
 }
 
@@ -470,7 +517,9 @@ pub async fn build_context(
     character_uuid: String,
     token_limit: Option<usize>,
 ) -> Result<BuiltContextResult, String> {
-    let (character_data, chat_history) = if let Some(session) = SESSION_MANAGER.get_session(&character_uuid) {
+    let (character_data, chat_history) = if let Some(session) =
+        SESSION_MANAGER.get_session(&character_uuid)
+    {
         (session.character_data.clone(), session.chat_history.clone())
     } else {
         let character_data = CharacterStorage::get_character_by_uuid(&app_handle, &character_uuid)?

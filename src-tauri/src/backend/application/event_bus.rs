@@ -1,8 +1,7 @@
+use crate::ai_chat::{MessageRole, ToolCallData};
 use crate::backend::domain::{
-    CharacterUpdateType,
-    SessionInfo,
-    SessionUnloadReason,
-    TokenUsageStats,
+    CharacterUpdateType, ReasoningDeltaKind, SessionInfo, SessionUnloadReason, TokenUsageStats,
+    ToolExecutionPhase,
 };
 use crate::character_storage::CharacterData;
 use crate::chat_history::ChatMessage;
@@ -58,9 +57,72 @@ impl EventBus {
         app: &tauri::AppHandle,
         uuid: &str,
         message: &ChatMessage,
+        target_message_id: Option<&str>,
         intermediates: Option<Vec<ChatMessage>>,
     ) -> Result<(), String> {
-        EventEmitter::send_message_received(app, uuid, message, intermediates)
+        EventEmitter::send_message_received(app, uuid, message, target_message_id, intermediates)
+    }
+
+    pub fn message_stream_delta(
+        app: &tauri::AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        role: MessageRole,
+        delta: &str,
+        is_finished: bool,
+        is_aborted: bool,
+    ) -> Result<(), String> {
+        EventEmitter::send_message_stream_delta(
+            app,
+            uuid,
+            target_message_id,
+            role,
+            delta,
+            is_finished,
+            is_aborted,
+        )
+    }
+
+    pub fn message_reasoning_delta(
+        app: &tauri::AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        delta: &str,
+        kind: ReasoningDeltaKind,
+        is_finished: bool,
+        is_aborted: bool,
+    ) -> Result<(), String> {
+        EventEmitter::send_message_reasoning_delta(
+            app,
+            uuid,
+            target_message_id,
+            delta,
+            kind,
+            is_finished,
+            is_aborted,
+        )
+    }
+
+    pub fn tool_execution_status(
+        app: &tauri::AppHandle,
+        uuid: &str,
+        target_message_id: &str,
+        tool_call: &ToolCallData,
+        phase: ToolExecutionPhase,
+        result: Option<Value>,
+        error: Option<String>,
+        execution_time_ms: Option<u64>,
+    ) -> Result<(), String> {
+        EventEmitter::send_tool_execution_status(
+            app,
+            uuid,
+            target_message_id,
+            tool_call,
+            phase,
+            result,
+            error,
+            execution_time_ms,
+        )
     }
 
     pub fn token_stats(

@@ -44,4 +44,3 @@ pub struct CommandResult {
     /// 返回数据（可选）
     pub data: Option<serde_json::Value>,
 }
-

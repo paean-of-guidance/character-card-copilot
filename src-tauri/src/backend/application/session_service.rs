@@ -7,10 +7,7 @@ use tauri::AppHandle;
 pub struct SessionService;
 
 impl SessionService {
-    pub async fn load_session(
-        app_handle: &AppHandle,
-        uuid: String,
-    ) -> Result<SessionInfo, String> {
+    pub async fn load_session(app_handle: &AppHandle, uuid: String) -> Result<SessionInfo, String> {
         let session = SESSION_MANAGER.get_or_create_session(app_handle, uuid)?;
 
         let character_data = session.character_data.clone();
@@ -22,10 +19,7 @@ impl SessionService {
         Ok(session.get_session_info())
     }
 
-    pub async fn send_chat_message(
-        app_handle: &AppHandle,
-        message: String,
-    ) -> Result<(), String> {
+    pub async fn send_chat_message(app_handle: &AppHandle, message: String) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
@@ -44,10 +38,7 @@ impl SessionService {
         Self::generate_ai_response(app_handle, &mut session, "chat").await
     }
 
-    pub async fn unload_session(
-        app_handle: &AppHandle,
-        uuid: String,
-    ) -> Result<(), String> {
+    pub async fn unload_session(app_handle: &AppHandle, uuid: String) -> Result<(), String> {
         if let Some(mut session) = SESSION_MANAGER.get_session(&uuid) {
             if let Err(e) = session.save_history(app_handle).await {
                 eprintln!("保存会话历史记录失败: {}", e);
@@ -128,10 +119,7 @@ impl SessionService {
         Ok(removed_count)
     }
 
-    pub async fn delete_chat_message(
-        app_handle: &AppHandle,
-        index: usize,
-    ) -> Result<(), String> {
+    pub async fn delete_chat_message(app_handle: &AppHandle, index: usize) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
@@ -167,9 +155,7 @@ impl SessionService {
         Ok(())
     }
 
-    pub async fn regenerate_last_message(
-        app_handle: &AppHandle,
-    ) -> Result<(), String> {
+    pub async fn regenerate_last_message(app_handle: &AppHandle) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
@@ -229,11 +215,7 @@ impl SessionService {
     ) -> Result<(), String> {
         let context_builder = crate::context_builder::create_default_context_builder();
         let context_result = context_builder
-            .build_full_context(
-                &session.character_data,
-                &session.chat_history,
-                None,
-            )
+            .build_full_context(&session.character_data, &session.chat_history, None)
             .map_err(|e| format!("构建上下文失败: {}", e))?;
 
         EventBus::context_built(app_handle, &session.uuid, &context_result)?;
@@ -302,9 +284,8 @@ impl SessionService {
             });
         }
 
-        let api_config =
-            crate::api_config::ApiConfigService::get_default_api_config(app_handle)?
-                .ok_or("没有可用的API配置")?;
+        let api_config = crate::api_config::ApiConfigService::get_default_api_config(app_handle)?
+            .ok_or("没有可用的API配置")?;
 
         let chat_tools = ToolRegistry::get_available_tools_global();
 
@@ -312,7 +293,7 @@ impl SessionService {
 
         crate::debug_log!("=== AI 请求调试信息 ===");
         crate::debug_log!("模型: {}", api_config.model);
-        crate::debug_log!("API端点: {}", api_config.endpoint);
+        crate::debug_log!("API端点: {}", api_config.base_url);
         crate::debug_log!("消息数量: {}", ai_chat_messages.len());
         crate::debug_log!("工具数量: {}", chat_tools.len());
         if disable_tools_for_debug {
@@ -349,7 +330,7 @@ impl SessionService {
             frequency_penalty: None,
             presence_penalty: None,
             stop: None,
-            stream: Some(false),
+            stream: Some(true),
             tools: if disable_tools_for_debug {
                 None
             } else {
@@ -363,17 +344,34 @@ impl SessionService {
         };
 
         let start_time = std::time::Instant::now();
+        let target_message_id = crate::file_utils::FileUtils::generate_uuid();
 
-        let ai_response_result = crate::ai_chat::AIChatService::create_chat_completion(
-            &api_config,
-            &request,
-            Some(app_handle),
-        )
-        .await
-        .map_err(|e| {
-            eprintln!("❌ API调用失败详情: {}", e);
-            format!("AI API调用失败: {}", e)
-        })?;
+        let ai_response_result =
+            match crate::ai_chat::AIChatService::create_chat_completion_streaming(
+                &api_config,
+                &request,
+                app_handle,
+                &target_message_id,
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(stream_error) => {
+                    eprintln!("⚠️ 流式调用失败，回退非流式: {}", stream_error);
+
+                    crate::ai_chat::AIChatService::create_chat_completion(
+                        &api_config,
+                        &request,
+                        Some(app_handle),
+                        Some(&target_message_id),
+                    )
+                    .await
+                    .map_err(|e| {
+                        eprintln!("❌ API调用失败详情: {}", e);
+                        format!("AI API调用失败: {}", e)
+                    })?
+                }
+            };
 
         let _execution_time = start_time.elapsed().as_millis() as u64;
 
@@ -477,6 +475,7 @@ impl SessionService {
             app_handle,
             &session.uuid,
             &ai_response,
+            Some(&target_message_id),
             converted_intermediate_msgs,
         )?;
 

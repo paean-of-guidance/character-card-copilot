@@ -1,26 +1,24 @@
-use async_openai::{
-    config::OpenAIConfig,
-    types::{
-        ChatCompletionMessageToolCall, ChatCompletionNamedToolChoice,
-        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestToolMessageArgs, ChatCompletionRequestToolMessageContent,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionToolArgs,
-        ChatCompletionToolChoiceOption, ChatCompletionToolType, CreateChatCompletionRequestArgs,
-        FunctionCall, FunctionName, FunctionObject,
-    },
-    Client,
+use crate::ai_tools::{ToolCallRequest, ToolDefinition};
+use crate::api_config::{ApiConfig, ApiProvider};
+use crate::backend::application::event_bus::EventBus;
+use crate::backend::domain::{ReasoningDeltaKind, ToolExecutionPhase};
+use crate::tools::ToolRegistry;
+use futures_util::StreamExt;
+use genai::adapter::AdapterKind;
+use genai::chat::{
+    ChatMessage as GenAiChatMessage, ChatOptions as GenAiChatOptions,
+    ChatRequest as GenAiChatRequest, ChatResponse as GenAiChatResponse,
+    ChatStreamEvent as GenAiChatStreamEvent, StreamEnd as GenAiStreamEnd, Tool as GenAiTool,
+    ToolCall as GenAiToolCall, ToolResponse as GenAiToolResponse,
 };
-use reqwest::StatusCode;
+use genai::resolver::{AuthData, Endpoint, ServiceTargetResolver};
+use genai::{Client, ModelIden, ServiceTarget};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::backend::application::event_bus::EventBus;
 
-use super::api_config::ApiConfig;
-
-/// 聊天消息角色 (为前端兼容性保留)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 聊天消息角色
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-#[derive(PartialEq)]
 pub enum MessageRole {
     System,
     User,
@@ -28,7 +26,7 @@ pub enum MessageRole {
     Tool,
 }
 
-/// 聊天消息 (为前端兼容性保留)
+/// 聊天消息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: MessageRole,
@@ -38,7 +36,7 @@ pub struct ChatMessage {
     pub tool_call_id: Option<String>,
 }
 
-/// 工具调用数据 (为前端兼容性保留)
+/// 工具调用数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallData {
     pub id: String,
@@ -47,14 +45,14 @@ pub struct ToolCallData {
     pub function: ToolCallFunctionData,
 }
 
-/// 工具调用函数数据 (为前端兼容性保留)
+/// 工具调用函数数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallFunctionData {
     pub name: String,
     pub arguments: String,
 }
 
-/// 工具调用 (兼容性)
+/// 工具调用偏好
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ToolChoice {
@@ -71,7 +69,7 @@ pub struct ToolTarget {
     pub name: String,
 }
 
-/// 停止序列 (兼容性)
+/// 停止序列
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StopSequence {
@@ -107,14 +105,11 @@ pub struct ChatCompletionResponse {
     pub system_fingerprint: Option<String>,
     pub choices: Vec<ChatCompletionChoice>,
     pub usage: Usage,
-
-    /// 中间消息（包括 assistant with tool_calls 和 tool results）
-    /// 用于保存工具调用的完整上下文
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intermediate_messages: Option<Vec<ChatMessage>>,
 }
 
-/// 聊天完成请求 (兼容性)
+/// 聊天完成请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
     pub model: String,
@@ -126,668 +121,686 @@ pub struct ChatCompletionRequest {
     pub presence_penalty: Option<f64>,
     pub stop: Option<StopSequence>,
     pub stream: Option<bool>,
-    pub tools: Option<Vec<ChatTool>>,
+    pub tools: Option<Vec<ToolDefinition>>,
     pub tool_choice: Option<ToolChoice>,
 }
 
-/// 工具参数定义
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolParameter {
-    #[serde(rename = "type")]
-    pub param_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(rename = "enum")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enum_values: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub items: Option<Box<ToolParameter>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub properties: Option<HashMap<String, ToolParameter>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub required: Option<Vec<String>>,
+#[derive(Debug, Clone)]
+struct ToolExecutionOutput {
+    tool_message: ChatMessage,
+    success: bool,
+    data: Option<serde_json::Value>,
+    error: Option<String>,
+    execution_time_ms: u64,
 }
 
-/// 工具函数定义
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolFunction {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<ToolParameters>,
-}
-
-/// 工具参数
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolParameters {
-    #[serde(rename = "type")]
-    pub param_type: String,
-    pub properties: HashMap<String, ToolParameter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub required: Option<Vec<String>>,
-}
-
-/// 工具定义
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatTool {
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    pub function: ToolFunction,
-}
-
-/// AI聊天服务
 pub struct AIChatService;
 
 impl AIChatService {
-    /// 创建带自定义配置的客户端
-    async fn create_client_with_config(
-        api_config: &ApiConfig,
-    ) -> Result<Client<OpenAIConfig>, String> {
-        let base_url = Self::normalize_api_base(&api_config.endpoint);
-
-        // 创建自定义配置
-        let config = OpenAIConfig::new()
-            .with_api_key(&api_config.key)
-            .with_api_base(&base_url);
-
-        let client = Client::with_config(config);
-        Ok(client)
+    fn normalize_endpoint_for_genai(base_url: &str) -> String {
+        if base_url.ends_with('/') {
+            base_url.to_string()
+        } else {
+            format!("{base_url}/")
+        }
     }
 
-    /// 将前端消息转换为 async-openai 消息格式
-    fn convert_messages_to_openai(
-        messages: &[ChatMessage],
-    ) -> Vec<async_openai::types::ChatCompletionRequestMessage> {
-        let mut openai_messages = Vec::new();
+    fn create_client_with_config(api_config: &ApiConfig) -> Client {
+        let provider = api_config.provider;
+        let base_url = Self::normalize_endpoint_for_genai(&api_config.base_url);
+        let api_key = api_config.api_key.clone();
 
-        for msg in messages {
-            let openai_msg = match msg.role {
-                MessageRole::System => {
-                    let system_msg = ChatCompletionRequestSystemMessageArgs::default()
-                        .content(msg.content.clone())
-                        .build()
-                        .unwrap();
-                    system_msg.into()
-                }
-                MessageRole::User => {
-                    let user_msg = ChatCompletionRequestUserMessageArgs::default()
-                        .content(msg.content.clone())
-                        .build()
-                        .unwrap();
-                    user_msg.into()
-                }
-                MessageRole::Assistant => {
-                    let mut builder = ChatCompletionRequestAssistantMessageArgs::default();
+        let target_resolver = ServiceTargetResolver::from_resolver_fn(
+            move |service_target: ServiceTarget| -> Result<ServiceTarget, genai::resolver::Error> {
+                let model_name = service_target.model.model_name;
+                let endpoint = Endpoint::from_owned(base_url.clone());
+                let auth = AuthData::from_single(api_key.clone());
+                let model = ModelIden::new(provider.adapter_kind(), model_name);
+                Ok(ServiceTarget {
+                    endpoint,
+                    auth,
+                    model,
+                })
+            },
+        );
 
-                    if !msg.content.is_empty() {
-                        builder.content(msg.content.clone());
-                    }
-                    if let Some(name) = &msg.name {
-                        builder.name(name.clone());
-                    }
-                    if let Some(tool_calls) = &msg.tool_calls {
-                        let converted_tool_calls = tool_calls
-                            .iter()
-                            .map(|call| ChatCompletionMessageToolCall {
-                                id: call.id.clone(),
-                                r#type: ChatCompletionToolType::Function,
-                                function: FunctionCall {
-                                    name: call.function.name.clone(),
-                                    arguments: call.function.arguments.clone(),
-                                },
-                            })
-                            .collect::<Vec<_>>();
-                        builder.tool_calls(converted_tool_calls);
-                    }
+        Client::builder()
+            .with_service_target_resolver(target_resolver)
+            .build()
+    }
 
-                    builder.build().unwrap().into()
-                }
-                MessageRole::Tool => {
-                    // 对于工具消息，暂时转换为用户消息
-                    if let Some(tool_call_id) = &msg.tool_call_id {
-                        let tool_msg = ChatCompletionRequestToolMessageArgs::default()
-                            .content(ChatCompletionRequestToolMessageContent::Text(
-                                msg.content.clone(),
-                            ))
-                            .tool_call_id(tool_call_id.clone())
-                            .build()
-                            .unwrap();
-                        tool_msg.into()
-                    } else {
-                        // tool_call_id 丢失时退回为用户消息以避免请求构造失败
-                        ChatCompletionRequestUserMessageArgs::default()
-                            .content(format!("[Tool Response] {}", msg.content))
-                            .build()
-                            .unwrap()
-                            .into()
-                    }
-                }
+    fn build_options(request: &ChatCompletionRequest) -> GenAiChatOptions {
+        let mut options = GenAiChatOptions::default()
+            .with_capture_raw_body(true)
+            .with_capture_usage(true)
+            .with_capture_content(true)
+            .with_capture_tool_calls(true);
+
+        if let Some(temperature) = request.temperature {
+            options = options.with_temperature(temperature);
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            options = options.with_max_tokens(max_tokens);
+        }
+        if let Some(top_p) = request.top_p {
+            options = options.with_top_p(top_p);
+        }
+        if let Some(stop) = &request.stop {
+            let sequences = match stop {
+                StopSequence::Single(value) => vec![value.clone()],
+                StopSequence::Multiple(values) => values.clone(),
             };
-
-            openai_messages.push(openai_msg);
+            options = options.with_stop_sequences(sequences);
         }
 
-        openai_messages
+        options
     }
 
-    fn convert_tools_to_openai(tools: &[ChatTool]) -> Vec<async_openai::types::ChatCompletionTool> {
-        tools
+    fn join_system_messages(messages: &[ChatMessage]) -> Option<String> {
+        let combined = messages
             .iter()
-            .filter_map(|tool| {
-                if tool.tool_type != "function" {
-                    return None;
+            .filter(|message| {
+                message.role == MessageRole::System && !message.content.trim().is_empty()
+            })
+            .map(|message| message.content.trim())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        if combined.is_empty() {
+            None
+        } else {
+            Some(combined)
+        }
+    }
+
+    fn convert_messages_to_genai(messages: &[ChatMessage]) -> Vec<GenAiChatMessage> {
+        messages
+            .iter()
+            .filter_map(|message| match message.role {
+                MessageRole::System => None,
+                MessageRole::User => Some(GenAiChatMessage::user(message.content.clone())),
+                MessageRole::Assistant => {
+                    if let Some(tool_calls) = &message.tool_calls {
+                        let tool_calls = tool_calls
+                            .iter()
+                            .filter_map(Self::convert_tool_call_to_genai)
+                            .collect::<Vec<_>>();
+
+                        if !tool_calls.is_empty() {
+                            Some(GenAiChatMessage::from(tool_calls))
+                        } else {
+                            Some(GenAiChatMessage::assistant(message.content.clone()))
+                        }
+                    } else {
+                        Some(GenAiChatMessage::assistant(message.content.clone()))
+                    }
                 }
-
-                let parameters = tool
-                    .function
-                    .parameters
-                    .as_ref()
-                    .and_then(|params| serde_json::to_value(params).ok());
-
-                let function_object = FunctionObject {
-                    name: tool.function.name.clone(),
-                    description: tool.function.description.clone(),
-                    parameters,
-                    strict: None,
-                };
-
-                let mut builder = ChatCompletionToolArgs::default();
-                builder.r#type(ChatCompletionToolType::Function);
-                builder.function(function_object);
-                builder.build().ok()
+                MessageRole::Tool => message.tool_call_id.as_ref().map(|tool_call_id| {
+                    GenAiChatMessage::from(GenAiToolResponse::new(
+                        tool_call_id.clone(),
+                        message.content.clone(),
+                    ))
+                }),
             })
             .collect()
     }
 
-    fn convert_tool_choice_to_openai(
-        choice: &ToolChoice,
-    ) -> Option<ChatCompletionToolChoiceOption> {
-        match choice {
-            ToolChoice::String(value) => match value.to_lowercase().as_str() {
-                "none" => Some(ChatCompletionToolChoiceOption::None),
-                "auto" => Some(ChatCompletionToolChoiceOption::Auto),
-                "required" => Some(ChatCompletionToolChoiceOption::Required),
-                _ => None,
-            },
-            ToolChoice::Function {
-                choice_type,
-                function,
-            } => {
-                if choice_type.to_lowercase() != "function" {
-                    return None;
+    fn convert_tool_definitions(tools: &[ToolDefinition]) -> Vec<GenAiTool> {
+        tools
+            .iter()
+            .filter(|tool| tool.tool_type == "function")
+            .map(|tool| {
+                let mut genai_tool = GenAiTool::new(tool.function.name.clone());
+
+                if let Some(description) = &tool.function.description {
+                    genai_tool = genai_tool.with_description(description.clone());
                 }
 
-                Some(ChatCompletionToolChoiceOption::Named(
-                    ChatCompletionNamedToolChoice {
-                        r#type: ChatCompletionToolType::Function,
-                        function: FunctionName {
-                            name: function.name.clone(),
-                        },
-                    },
-                ))
+                if let Some(parameters) = &tool.function.parameters {
+                    if let Ok(schema) = serde_json::to_value(parameters) {
+                        genai_tool = genai_tool.with_schema(schema);
+                    }
+                }
+
+                genai_tool
+            })
+            .collect()
+    }
+
+    fn convert_tool_call_to_genai(tool_call: &ToolCallData) -> Option<GenAiToolCall> {
+        let fn_arguments = serde_json::from_str(&tool_call.function.arguments).ok()?;
+        Some(GenAiToolCall {
+            call_id: tool_call.id.clone(),
+            fn_name: tool_call.function.name.clone(),
+            fn_arguments,
+            thought_signatures: None,
+        })
+    }
+
+    fn convert_tool_call_from_genai(tool_call: &GenAiToolCall) -> ToolCallData {
+        ToolCallData {
+            id: tool_call.call_id.clone(),
+            call_type: "function".to_string(),
+            function: ToolCallFunctionData {
+                name: tool_call.fn_name.clone(),
+                arguments: tool_call.fn_arguments.to_string(),
+            },
+        }
+    }
+
+    fn convert_usage(usage: &genai::chat::Usage) -> Usage {
+        let prompt_tokens = usage.prompt_tokens.unwrap_or_default().max(0) as u32;
+        let completion_tokens = usage.completion_tokens.unwrap_or_default().max(0) as u32;
+        let total_tokens = usage
+            .total_tokens
+            .unwrap_or((prompt_tokens + completion_tokens) as i32)
+            .max(0) as u32;
+
+        Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        }
+    }
+
+    fn convert_response_from_genai(response: &GenAiChatResponse) -> ChatCompletionResponse {
+        let tool_calls = response
+            .tool_calls()
+            .into_iter()
+            .map(Self::convert_tool_call_from_genai)
+            .collect::<Vec<_>>();
+
+        let message = ChatMessage {
+            role: MessageRole::Assistant,
+            content: response.first_text().unwrap_or_default().to_string(),
+            name: None,
+            tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
+            tool_call_id: None,
+        };
+
+        ChatCompletionResponse {
+            id: uuid::Uuid::new_v4().to_string(),
+            object: "chat.completion".to_string(),
+            created: chrono::Utc::now().timestamp() as u64,
+            model: response.model_iden.model_name.to_string(),
+            system_fingerprint: None,
+            choices: vec![ChatCompletionChoice {
+                index: 0,
+                finish_reason: if message.tool_calls.is_some() {
+                    "tool_calls".to_string()
+                } else {
+                    "stop".to_string()
+                },
+                message,
+            }],
+            usage: Self::convert_usage(&response.usage),
+            intermediate_messages: None,
+        }
+    }
+
+    async fn execute_tool_call(
+        app_handle: &tauri::AppHandle,
+        tool_call: &ToolCallData,
+    ) -> ToolExecutionOutput {
+        let parameters =
+            match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
+                Ok(serde_json::Value::Object(map)) => map.into_iter().collect::<HashMap<_, _>>(),
+                Ok(_) | Err(_) => HashMap::new(),
+            };
+
+        let request = ToolCallRequest {
+            tool_name: tool_call.function.name.clone(),
+            parameters,
+            character_uuid: crate::character_state::CHARACTER_STATE.get_current_character(),
+            context: None,
+        };
+
+        let result = ToolRegistry::execute_tool_call_global(app_handle, &request).await;
+        let data = result.data.clone();
+        let error = result.error.clone();
+        let tool_result = serde_json::json!({
+            "success": result.success,
+            "data": data,
+            "error": error,
+            "execution_time_ms": result.execution_time_ms,
+        });
+
+        ToolExecutionOutput {
+            tool_message: ChatMessage {
+                role: MessageRole::Tool,
+                content: tool_result.to_string(),
+                name: Some(tool_call.function.name.clone()),
+                tool_calls: None,
+                tool_call_id: Some(tool_call.id.clone()),
+            },
+            success: result.success,
+            data,
+            error,
+            execution_time_ms: result.execution_time_ms,
+        }
+    }
+
+    fn build_chat_request(
+        messages: &[ChatMessage],
+        request: &ChatCompletionRequest,
+    ) -> GenAiChatRequest {
+        let mut chat_request = GenAiChatRequest::default();
+
+        if let Some(system) = Self::join_system_messages(messages) {
+            chat_request = chat_request.with_system(system);
+        }
+
+        chat_request = chat_request.append_messages(Self::convert_messages_to_genai(messages));
+
+        if let Some(tools) = &request.tools {
+            let converted_tools = Self::convert_tool_definitions(tools);
+            if !converted_tools.is_empty() {
+                chat_request = chat_request.with_tools(converted_tools);
             }
         }
+
+        chat_request
     }
 
-    /// 将 async-openai 响应转换为前端兼容格式
-    fn convert_response_from_openai(
-        response: async_openai::types::CreateChatCompletionResponse,
+    fn convert_stream_end_to_response(
+        stream_end: GenAiStreamEnd,
+        model: &str,
+        intermediate_messages: Option<Vec<ChatMessage>>,
     ) -> ChatCompletionResponse {
+        let text = stream_end
+            .captured_first_text()
+            .unwrap_or_default()
+            .to_string();
+        let tool_calls = stream_end
+            .captured_tool_calls()
+            .unwrap_or_default()
+            .into_iter()
+            .map(Self::convert_tool_call_from_genai)
+            .collect::<Vec<_>>();
+
+        let usage = stream_end
+            .captured_usage
+            .as_ref()
+            .map(Self::convert_usage)
+            .unwrap_or(Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            });
+
+        let message = ChatMessage {
+            role: MessageRole::Assistant,
+            content: text,
+            name: None,
+            tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
+            tool_call_id: None,
+        };
+
         ChatCompletionResponse {
-            id: response.id,
-            object: response.object,
-            created: response.created as u64,
-            model: response.model,
-            system_fingerprint: response.system_fingerprint,
-            choices: response
-                .choices
-                .into_iter()
-                .map(|choice| {
-                    ChatCompletionChoice {
-                        index: choice.index,
-                        message: ChatMessage {
-                            role: match choice.message.role {
-                                async_openai::types::Role::System => MessageRole::System,
-                                async_openai::types::Role::User => MessageRole::User,
-                                async_openai::types::Role::Assistant => MessageRole::Assistant,
-                                async_openai::types::Role::Tool => MessageRole::Tool,
-                                async_openai::types::Role::Function => MessageRole::Tool,
-                            },
-                            content: choice.message.content.unwrap_or_default(),
-                            name: None, // async-openai 的消息没有 name 字段
-                            tool_calls: choice.message.tool_calls.as_ref().map(|calls| {
-                                calls
-                                    .iter()
-                                    .map(|call| ToolCallData {
-                                        id: call.id.clone(),
-                                        call_type: "function".to_string(),
-                                        function: ToolCallFunctionData {
-                                            name: call.function.name.clone(),
-                                            arguments: call.function.arguments.clone(),
-                                        },
-                                    })
-                                    .collect()
-                            }),
-                            tool_call_id: None,
-                        },
-                        finish_reason: choice
-                            .finish_reason
-                            .map(|fr| match fr {
-                                async_openai::types::FinishReason::Stop => "stop".to_string(),
-                                async_openai::types::FinishReason::Length => "length".to_string(),
-                                async_openai::types::FinishReason::ToolCalls => {
-                                    "tool_calls".to_string()
-                                }
-                                async_openai::types::FinishReason::FunctionCall => {
-                                    "function_call".to_string()
-                                }
-                                async_openai::types::FinishReason::ContentFilter => {
-                                    "content_filter".to_string()
-                                }
-                            })
-                            .unwrap_or("stop".to_string()),
-                    }
-                })
-                .collect(),
-            usage: response
-                .usage
-                .map(|usage| Usage {
-                    prompt_tokens: usage.prompt_tokens,
-                    completion_tokens: usage.completion_tokens,
-                    total_tokens: usage.total_tokens,
-                })
-                .unwrap_or(Usage {
-                    prompt_tokens: 0,
-                    completion_tokens: 0,
-                    total_tokens: 0,
-                }),
-            intermediate_messages: None, // 初始时没有中间消息，在工具调用时会填充
+            id: uuid::Uuid::new_v4().to_string(),
+            object: "chat.completion".to_string(),
+            created: chrono::Utc::now().timestamp() as u64,
+            model: model.to_string(),
+            system_fingerprint: None,
+            choices: vec![ChatCompletionChoice {
+                index: 0,
+                finish_reason: if message.tool_calls.is_some() {
+                    "tool_calls".to_string()
+                } else {
+                    "stop".to_string()
+                },
+                message,
+            }],
+            usage,
+            intermediate_messages,
         }
     }
 
-    /// 创建聊天完成请求
+    fn empty_assistant_message() -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::Assistant,
+            content: String::new(),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    fn character_uuid_for_events() -> String {
+        crate::character_state::CHARACTER_STATE
+            .get_current_character()
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
+    fn maybe_emit_stream_abort(
+        app_handle: &tauri::AppHandle,
+        character_uuid: &str,
+        target_message_id: &str,
+    ) {
+        if let Err(error) = EventBus::message_stream_delta(
+            app_handle,
+            character_uuid,
+            target_message_id,
+            MessageRole::Assistant,
+            "",
+            false,
+            true,
+        ) {
+            eprintln!("发送流式中止事件失败: {error}");
+        }
+
+        if let Err(error) = EventBus::message_reasoning_delta(
+            app_handle,
+            character_uuid,
+            target_message_id,
+            "",
+            ReasoningDeltaKind::Reasoning,
+            false,
+            true,
+        ) {
+            eprintln!("发送 reasoning 中止事件失败: {error}");
+        }
+    }
+
+    async fn execute_tool_calls(
+        app_handle: &tauri::AppHandle,
+        character_uuid: &str,
+        target_message_id: &str,
+        tool_calls: Vec<ToolCallData>,
+        messages: &mut Vec<ChatMessage>,
+        intermediate_messages: &mut Vec<ChatMessage>,
+    ) {
+        if tool_calls.is_empty() {
+            return;
+        }
+
+        let assistant_message = ChatMessage {
+            role: MessageRole::Assistant,
+            content: String::new(),
+            name: None,
+            tool_calls: Some(tool_calls.clone()),
+            tool_call_id: None,
+        };
+
+        intermediate_messages.push(assistant_message.clone());
+        messages.push(assistant_message);
+
+        for tool_call in tool_calls {
+            if let Err(error) = EventBus::tool_execution_status(
+                app_handle,
+                character_uuid,
+                target_message_id,
+                &tool_call,
+                ToolExecutionPhase::Started,
+                None,
+                None,
+                None,
+            ) {
+                eprintln!("发送工具开始事件失败: {error}");
+            }
+
+            let tool_result = Self::execute_tool_call(app_handle, &tool_call).await;
+
+            let phase = if tool_result.success {
+                ToolExecutionPhase::Succeeded
+            } else {
+                ToolExecutionPhase::Failed
+            };
+
+            if let Err(error) = EventBus::tool_execution_status(
+                app_handle,
+                character_uuid,
+                target_message_id,
+                &tool_call,
+                phase,
+                tool_result.data.clone(),
+                tool_result.error.clone(),
+                Some(tool_result.execution_time_ms),
+            ) {
+                eprintln!("发送工具状态事件失败: {error}");
+            }
+
+            if let Err(error_message) = EventBus::tool_executed(
+                app_handle,
+                character_uuid,
+                &tool_call.function.name,
+                tool_result.success,
+                tool_result.data.clone(),
+                tool_result.error.clone(),
+                tool_result.execution_time_ms,
+            ) {
+                eprintln!("发送工具执行事件失败: {error_message}");
+            }
+
+            intermediate_messages.push(tool_result.tool_message.clone());
+            messages.push(tool_result.tool_message);
+        }
+    }
+
+    pub async fn create_chat_completion_streaming(
+        api_config: &ApiConfig,
+        request: &ChatCompletionRequest,
+        app_handle: &tauri::AppHandle,
+        target_message_id: &str,
+    ) -> Result<ChatCompletionResponse, String> {
+        let client = Self::create_client_with_config(api_config);
+        let options = Self::build_options(request);
+        let mut messages = request.messages.clone();
+        let mut intermediate_messages: Vec<ChatMessage> = Vec::new();
+        let character_uuid = Self::character_uuid_for_events();
+
+        for _ in 0..5 {
+            let chat_request = Self::build_chat_request(&messages, request);
+            let stream_response = client
+                .exec_chat_stream(&request.model, chat_request, Some(&options))
+                .await
+                .map_err(|error| format!("AI 流式调用失败: {error}"))?;
+
+            let mut stream = stream_response.stream;
+            let mut emitted_delta = false;
+            let mut emitted_reasoning_delta = false;
+            let mut stream_end: Option<GenAiStreamEnd> = None;
+
+            while let Some(event) = stream.next().await {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(error) => {
+                        Self::maybe_emit_stream_abort(
+                            app_handle,
+                            &character_uuid,
+                            target_message_id,
+                        );
+                        return Err(format!("AI 流式事件处理失败: {error}"));
+                    }
+                };
+
+                match event {
+                    GenAiChatStreamEvent::Chunk(chunk) => {
+                        if !chunk.content.is_empty() {
+                            emitted_delta = true;
+                            EventBus::message_stream_delta(
+                                app_handle,
+                                &character_uuid,
+                                target_message_id,
+                                MessageRole::Assistant,
+                                &chunk.content,
+                                false,
+                                false,
+                            )?;
+                        }
+                    }
+                    GenAiChatStreamEvent::ReasoningChunk(chunk) => {
+                        if !chunk.content.is_empty() {
+                            emitted_reasoning_delta = true;
+                            EventBus::message_reasoning_delta(
+                                app_handle,
+                                &character_uuid,
+                                target_message_id,
+                                &chunk.content,
+                                ReasoningDeltaKind::Reasoning,
+                                false,
+                                false,
+                            )?;
+                        }
+                    }
+                    GenAiChatStreamEvent::ThoughtSignatureChunk(chunk) => {
+                        if !chunk.content.is_empty() {
+                            emitted_reasoning_delta = true;
+                            EventBus::message_reasoning_delta(
+                                app_handle,
+                                &character_uuid,
+                                target_message_id,
+                                &chunk.content,
+                                ReasoningDeltaKind::ThoughtSignature,
+                                false,
+                                false,
+                            )?;
+                        }
+                    }
+                    GenAiChatStreamEvent::End(end) => {
+                        stream_end = Some(end);
+                        break;
+                    }
+                    GenAiChatStreamEvent::Start
+                    | GenAiChatStreamEvent::ToolCallChunk(_) => {}
+                }
+            }
+
+            let Some(stream_end) = stream_end else {
+                Self::maybe_emit_stream_abort(app_handle, &character_uuid, target_message_id);
+                return Err("AI 流式响应在结束前中断".to_string());
+            };
+
+            let response = Self::convert_stream_end_to_response(
+                stream_end,
+                &stream_response.model_iden.model_name,
+                (!intermediate_messages.is_empty()).then_some(intermediate_messages.clone()),
+            );
+
+            let assistant_message = response
+                .choices
+                .first()
+                .map(|choice| choice.message.clone())
+                .unwrap_or_else(Self::empty_assistant_message);
+
+            let has_visible_stream_content = emitted_delta || !assistant_message.content.is_empty();
+
+            if !assistant_message.content.is_empty() && !emitted_delta {
+                EventBus::message_stream_delta(
+                    app_handle,
+                    &character_uuid,
+                    target_message_id,
+                    MessageRole::Assistant,
+                    &assistant_message.content,
+                    false,
+                    false,
+                )?;
+            }
+
+            if has_visible_stream_content {
+                EventBus::message_stream_delta(
+                    app_handle,
+                    &character_uuid,
+                    target_message_id,
+                    MessageRole::Assistant,
+                    "",
+                    true,
+                    false,
+                )?;
+            }
+
+            if emitted_reasoning_delta {
+                EventBus::message_reasoning_delta(
+                    app_handle,
+                    &character_uuid,
+                    target_message_id,
+                    "",
+                    ReasoningDeltaKind::Reasoning,
+                    true,
+                    false,
+                )?;
+            }
+
+            let tool_calls = assistant_message.tool_calls.clone().unwrap_or_default();
+            if tool_calls.is_empty() {
+                return Ok(response);
+            }
+
+            Self::execute_tool_calls(
+                app_handle,
+                &character_uuid,
+                target_message_id,
+                tool_calls,
+                &mut messages,
+                &mut intermediate_messages,
+            )
+            .await;
+        }
+
+        Err("工具调用循环次数超过限制".to_string())
+    }
+
     pub async fn create_chat_completion(
         api_config: &ApiConfig,
         request: &ChatCompletionRequest,
         app_handle: Option<&tauri::AppHandle>,
+        target_message_id: Option<&str>,
     ) -> Result<ChatCompletionResponse, String> {
-        let client = Self::create_client_with_config(api_config).await?;
+        let client = Self::create_client_with_config(api_config);
+        let options = Self::build_options(request);
         let mut messages = request.messages.clone();
-        let max_iterations = 5; // 防止无限循环
-        let mut iteration = 0;
-
-        // 收集中间消息（包括 assistant with tool_calls 和 tool results）
         let mut intermediate_messages: Vec<ChatMessage> = Vec::new();
+        let character_uuid = app_handle.map(|_| Self::character_uuid_for_events());
 
-        loop {
-            if iteration >= max_iterations {
-                return Err("工具调用循环次数超过限制".to_string());
-            }
-            iteration += 1;
+        for _ in 0..5 {
+            let chat_request = Self::build_chat_request(&messages, request);
 
-            let openai_messages = Self::convert_messages_to_openai(&messages);
-            let mut request_builder = CreateChatCompletionRequestArgs::default();
+            let response = client
+                .exec_chat(&request.model, chat_request, Some(&options))
+                .await
+                .map_err(|error| format!("AI API调用失败: {error}"))?;
 
-            request_builder.model(&request.model);
-            request_builder.messages(openai_messages);
+            let mut converted_response = Self::convert_response_from_genai(&response);
+            let assistant_message = converted_response
+                .choices
+                .first()
+                .map(|choice| choice.message.clone())
+                .unwrap_or_else(Self::empty_assistant_message);
 
-            if let Some(temp) = request.temperature {
-                request_builder.temperature(temp as f32);
-            }
-            if let Some(max_tokens) = request.max_tokens {
-                request_builder.max_tokens(max_tokens);
-            }
-            if let Some(top_p) = request.top_p {
-                request_builder.top_p(top_p as f32);
-            }
-            if let Some(freq_penalty) = request.frequency_penalty {
-                request_builder.frequency_penalty(freq_penalty as f32);
-            }
-            if let Some(pres_penalty) = request.presence_penalty {
-                request_builder.presence_penalty(pres_penalty as f32);
-            }
-            if let Some(tools) = &request.tools {
-                let converted_tools = Self::convert_tools_to_openai(tools);
-                if !converted_tools.is_empty() {
-                    request_builder.tools(converted_tools);
+            let tool_calls = assistant_message.tool_calls.clone().unwrap_or_default();
+            if tool_calls.is_empty() || app_handle.is_none() {
+                if !intermediate_messages.is_empty() {
+                    converted_response.intermediate_messages = Some(intermediate_messages);
                 }
-            }
-            if let Some(tool_choice) = &request.tool_choice {
-                if let Some(openai_choice) = Self::convert_tool_choice_to_openai(tool_choice) {
-                    request_builder.tool_choice(openai_choice);
-                }
+                return Ok(converted_response);
             }
 
-            let openai_request = request_builder
-                .build()
-                .map_err(|e| format!("请求build错误: {}", e))?;
+            let app_handle = app_handle.expect("checked above");
+            let character_uuid = character_uuid.as_deref().unwrap_or("unknown");
+            let target_message_id = target_message_id.unwrap_or_default();
 
-            let response = client.chat().create(openai_request).await;
-
-            let our_response = match response {
-                Ok(resp) => Self::convert_response_from_openai(resp),
-                Err(err) => {
-                    let err_msg = err.to_string();
-                    let lower = err_msg.to_lowercase();
-                    if lower.contains("deserialize") {
-                        crate::debug_warn!(
-                            "⚠️ async-openai 解析响应失败，尝试回退至 reqwest 捕获原始响应: {}",
-                            err_msg
-                        );
-                        // 回退到 HTTP，并打印原始响应
-                        Self::send_chat_request_via_http(api_config, request, true).await?
-                    } else {
-                        return Err(format!("API请求失败: {}", err_msg));
-                    }
-                }
-            };
-
-            // 检查是否有工具调用需要执行
-            if let Some(choice) = our_response.choices.first() {
-                if let Some(tool_calls) = &choice.message.tool_calls {
-                    if !tool_calls.is_empty() {
-                        // 执行工具调用
-                        if let Some(app_handle) = app_handle {
-                            // 保存 assistant 消息（包含 tool_calls）到中间消息
-                            intermediate_messages.push(choice.message.clone());
-                            messages.push(choice.message.clone());
-
-                            // 获取当前角色UUID用于事件发送
-                            let character_uuid = crate::character_state::CHARACTER_STATE
-                                .get_current_character()
-                                .unwrap_or_else(|| "unknown".to_string());
-
-                            for tool_call in tool_calls {
-                                if let Some(tool_result) = Self::execute_single_tool_call(
-                                    app_handle,
-                                    &tool_call.function.name,
-                                    &tool_call.function.arguments,
-                                    &messages,
-                                )
-                                .await
-                                {
-                                    // 解析工具执行结果
-                                    let success = tool_result.get("success")
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(false);
-                                    let data = tool_result.get("data").cloned();
-                                    let error = tool_result.get("error")
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let execution_time_ms = tool_result.get("execution_time_ms")
-                                        .and_then(|v| v.as_u64())
-                                        .unwrap_or(0);
-
-                                    // 发送工具执行事件
-                                    if let Err(e) = EventBus::tool_executed(
-                                        app_handle,
-                                        &character_uuid,
-                                        &tool_call.function.name,
-                                        success,
-                                        data.clone(),
-                                        error.clone(),
-                                        execution_time_ms,
-                                    ) {
-                                        eprintln!("发送工具执行事件失败: {}", e);
-                                    }
-
-                                    // 将工具结果添加到消息列表
-                                    let tool_message = ChatMessage {
-                                        role: MessageRole::Tool,
-                                        content: serde_json::to_string(&tool_result)
-                                            .unwrap_or_default(),
-                                        name: None,
-                                        tool_calls: None,
-                                        tool_call_id: Some(tool_call.id.clone()),
-                                    };
-                                    intermediate_messages.push(tool_message.clone());
-                                    messages.push(tool_message);
-                                } else {
-                                    // 工具执行失败
-                                    if let Err(e) = EventBus::tool_executed(
-                                        app_handle,
-                                        &character_uuid,
-                                        &tool_call.function.name,
-                                        false,
-                                        None,
-                                        Some("Tool execution failed".to_string()),
-                                        0,
-                                    ) {
-                                        eprintln!("发送工具执行失败事件失败: {}", e);
-                                    }
-
-                                    let tool_error_message = ChatMessage {
-                                        role: MessageRole::Tool,
-                                        content: serde_json::json!({
-                                            "success": false,
-                                            "error": "Tool execution failed"
-                                        })
-                                        .to_string(),
-                                        name: None,
-                                        tool_calls: None,
-                                        tool_call_id: Some(tool_call.id.clone()),
-                                    };
-                                    intermediate_messages.push(tool_error_message.clone());
-                                    messages.push(tool_error_message);
-                                }
-                            }
-
-                            // 继续循环，将工具结果发送回AI
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // 没有工具调用或工具调用完成，返回结果
-            // 如果有中间消息，添加到响应中
-            let mut final_response = our_response;
-            if !intermediate_messages.is_empty() {
-                final_response.intermediate_messages = Some(intermediate_messages);
-            }
-            return Ok(final_response);
+            Self::execute_tool_calls(
+                app_handle,
+                character_uuid,
+                target_message_id,
+                tool_calls,
+                &mut messages,
+                &mut intermediate_messages,
+            )
+            .await;
         }
+
+        Err("工具调用循环次数超过限制".to_string())
     }
+}
 
-    /// 执行单个工具调用
-    async fn execute_single_tool_call(
-        app_handle: &tauri::AppHandle,
-        tool_name: &str,
-        arguments: &str,
-        _messages: &[ChatMessage],
-    ) -> Option<serde_json::Value> {
-        // 解析参数
-        let params: std::collections::HashMap<String, serde_json::Value> =
-            match serde_json::from_str(arguments) {
-                Ok(parsed) => parsed,
-                Err(err) => {
-                    return Some(serde_json::json!({
-                        "success": false,
-                        "error": format!("Invalid tool arguments: {}", err)
-                    }));
-                }
-            };
-
-        // 从全局状态管理器获取当前角色UUID
-        let character_uuid = crate::character_state::CHARACTER_STATE.get_current_character();
-
-        // 创建工具调用请求
-        let tool_request = crate::ai_tools::ToolCallRequest {
-            tool_name: tool_name.to_string(),
-            parameters: params,
-            character_uuid,
-            context: None, // 可以考虑添加角色上下文
-        };
-
-        // 执行工具调用
-        let result =
-            crate::tools::ToolRegistry::execute_tool_call_global(app_handle, &tool_request).await;
-
-        if result.success {
-            Some(serde_json::json!({
-                "success": true,
-                "data": result.data,
-                "execution_time_ms": result.execution_time_ms
-            }))
-        } else {
-            let error_message = result
-                .error
-                .clone()
-                .unwrap_or_else(|| "Tool execution failed".to_string());
-
-            Some(serde_json::json!({
-                "success": false,
-                "error": error_message,
-                "data": result.data,
-                "execution_time_ms": result.execution_time_ms
-            }))
-        }
-    }
-
-    fn normalize_api_base(endpoint: &str) -> String {
-        let trimmed = endpoint.trim_end_matches('/');
-        if trimmed.ends_with("/v1") {
-            trimmed.to_string()
-        } else {
-            format!("{}/v1", trimmed)
-        }
-    }
-
-    async fn send_chat_request_via_http(
-        api_config: &ApiConfig,
-        request: &ChatCompletionRequest,
-        debug_log_raw: bool,
-    ) -> Result<ChatCompletionResponse, String> {
-        let base_url = Self::normalize_api_base(&api_config.endpoint);
-        let url = format!("{}/chat/completions", base_url);
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&url)
-            .bearer_auth(&api_config.key)
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("API请求失败: {}", e))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| format!("读取API响应失败: {}", e))?;
-
-        if debug_log_raw {
-            crate::debug_warn!("=== 回退 HTTP 原始响应 ===");
-            crate::debug_warn!("{}", body);
-        }
-
-        if status.is_success() {
-            match serde_json::from_str::<ChatCompletionResponse>(&body) {
-                Ok(parsed) => Ok(parsed),
-                Err(e) => {
-                    Self::log_response_body_debug(&body);
-                    Err(format!("API响应解析失败: {} - {}", e, body))
-                }
-            }
-        } else {
-            crate::debug_warn!(
-                "⚠️ API返回非成功状态，status={}, body={}",
-                status.as_u16(),
-                body
-            );
-            Err(Self::format_api_error(status, &body))
-        }
-    }
-
-    fn format_api_error(status: StatusCode, body: &str) -> String {
-        let detail = Self::extract_error_details(body)
-            .unwrap_or_else(|| "未返回错误信息".to_string());
-        format!("API返回错误 (HTTP {}): {}", status.as_u16(), detail)
-    }
-
-    fn extract_error_details(body: &str) -> Option<String> {
-        if body.trim().is_empty() {
-            return None;
-        }
-
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
-            if let Some(error_obj) = value.get("error") {
-                if let Some(parsed) = Self::parse_error_object(error_obj) {
-                    return Some(parsed);
-                }
-            }
-
-            if let Some(message) = value.get("message").and_then(|v| v.as_str()) {
-                let mut result = message.to_string();
-                if let Some(code) = value.get("code").and_then(Self::json_value_to_string) {
-                    result.push_str(&format!(" (code {})", code));
-                }
-                return Some(result);
-            }
-
-            return Some(value.to_string());
-        }
-
-        Some(body.trim().to_string())
-    }
-
-    fn parse_error_object(value: &serde_json::Value) -> Option<String> {
-        let message = value.get("message").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let code = value.get("code").and_then(Self::json_value_to_string);
-        let err_type = value.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
-
-        if message.is_none() && code.is_none() && err_type.is_none() {
-            return Some(value.to_string());
-        }
-
-        let mut segments = Vec::new();
-        if let Some(msg) = message {
-            segments.push(msg);
-        }
-
-        let mut meta = Vec::new();
-        if let Some(c) = code {
-            meta.push(format!("code {}", c));
-        }
-        if let Some(t) = err_type {
-            meta.push(t);
-        }
-        if !meta.is_empty() {
-            segments.push(format!("({})", meta.join(", ")));
-        }
-
-        Some(segments.join(" "))
-    }
-
-    fn json_value_to_string(value: &serde_json::Value) -> Option<String> {
-        match value {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            serde_json::Value::Bool(b) => Some(b.to_string()),
-            _ => None,
-        }
-    }
-
-    fn log_response_body_debug(body: &str) {
-        let truncated = if body.len() > 2000 {
-            format!("{}...[truncated {} chars]", &body[..2000], body.len() - 2000)
-        } else {
-            body.to_string()
-        };
-
-        crate::debug_warn!("=== 原始响应（解析失败） ===");
-        crate::debug_warn!("{}", truncated);
-
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-            if let Ok(pretty) = serde_json::to_string_pretty(&json) {
-                crate::debug_warn!("=== 原始响应 JSON 格式化 ===");
-                crate::debug_warn!("{}", pretty);
-            }
-
-            if let Some(choices) = json.get("choices") {
-                crate::debug_warn!("=== choices 片段 ===");
-                crate::debug_warn!("{}", choices);
-            }
+impl ApiProvider {
+    fn adapter_kind(self) -> AdapterKind {
+        match self {
+            ApiProvider::OpenAiCompatible => AdapterKind::OpenAI,
+            ApiProvider::OpenAiResponses => AdapterKind::OpenAIResp,
+            ApiProvider::Claude => AdapterKind::Anthropic,
+            ApiProvider::GeminiV1Beta => AdapterKind::Gemini,
         }
     }
 }

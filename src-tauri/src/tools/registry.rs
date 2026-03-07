@@ -1,6 +1,5 @@
 use super::AIToolTrait;
-use crate::ai_tools::{ToolCallRequest, ToolResult};
-use crate::ai_chat::ChatTool;
+use crate::ai_tools::{ToolCallRequest, ToolDefinition, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::AppHandle;
@@ -25,11 +24,11 @@ impl ToolRegistry {
     }
 
     /// 获取所有可用工具
-    pub fn get_available_tools(&self) -> Vec<ChatTool> {
+    pub fn get_available_tools(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
             .filter(|tool| tool.enabled())
-            .map(|tool| tool.to_chat_tool())
+            .map(|tool| tool.to_tool_definition())
             .collect()
     }
 
@@ -75,18 +74,18 @@ impl ToolRegistry {
     }
 
     /// 根据分类获取工具
-    pub fn get_tools_by_category(&self, category: &str) -> Vec<ChatTool> {
+    pub fn get_tools_by_category(&self, category: &str) -> Vec<ToolDefinition> {
         self.tools
             .values()
             .filter(|tool| tool.category() == category && tool.enabled())
-            .map(|tool| tool.to_chat_tool())
+            .map(|tool| tool.to_tool_definition())
             .collect()
     }
 
     // ========== 便捷的静态方法 ==========
 
     /// 获取所有可用工具（静态方法）
-    pub fn get_available_tools_global() -> Vec<ChatTool> {
+    pub fn get_available_tools_global() -> Vec<ToolDefinition> {
         let registry = TOOL_REGISTRY.read().unwrap();
         registry.get_available_tools()
     }
@@ -98,7 +97,7 @@ impl ToolRegistry {
     }
 
     /// 根据分类获取工具（静态方法）
-    pub fn get_tools_by_category_global(category: &str) -> Vec<ChatTool> {
+    pub fn get_tools_by_category_global(category: &str) -> Vec<ToolDefinition> {
         let registry = TOOL_REGISTRY.read().unwrap();
         registry.get_tools_by_category(category)
     }
@@ -111,6 +110,7 @@ lazy_static::lazy_static! {
         // 注册所有工具
         registry.register_tool(super::character_editor::EditCharacterTool);
         registry.register_tool(super::world_book_creator::CreateWorldBookEntryTool);
+        registry.register_tool(super::world_book_deleter::DeleteWorldBookEntryTool);
         std::sync::RwLock::new(registry)
     };
 }

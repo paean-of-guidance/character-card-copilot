@@ -34,7 +34,7 @@ const filteredApis = computed(() => {
   }
 
   return apis.value.filter((api) => {
-    return [api.profile, api.endpoint, api.model]
+    return [api.profile, api.base_url, api.model, api.provider]
       .filter(Boolean)
       .some((value) => value.toLowerCase().includes(query))
   })

@@ -32,10 +32,7 @@ pub async fn add_ai_role(
 }
 
 #[tauri::command]
-pub async fn delete_ai_role(
-    app_handle: tauri::AppHandle,
-    role_name: String,
-) -> Result<(), String> {
+pub async fn delete_ai_role(app_handle: tauri::AppHandle, role_name: String) -> Result<(), String> {
     AIConfigService::delete_role(&app_handle, &role_name)
 }
 
@@ -53,4 +50,3 @@ pub async fn get_all_ai_roles(
 ) -> Result<Vec<(String, AIRole)>, String> {
     AIConfigService::get_all_roles(&app_handle)
 }
-

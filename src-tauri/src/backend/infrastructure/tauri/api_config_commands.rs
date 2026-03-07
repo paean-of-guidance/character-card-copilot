@@ -78,4 +78,3 @@ pub async fn fetch_models(
 ) -> Result<Vec<ModelInfo>, String> {
     ApiConfigService::fetch_models(&app_handle, &config).await
 }
-

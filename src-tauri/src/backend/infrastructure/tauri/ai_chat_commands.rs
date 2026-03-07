@@ -7,5 +7,5 @@ pub async fn create_chat_completion(
     api_config: ApiConfig,
     request: ChatCompletionRequest,
 ) -> Result<ChatCompletionResponse, String> {
-    AIChatService::create_chat_completion(&api_config, &request, Some(&app)).await
+    AIChatService::create_chat_completion(&api_config, &request, Some(&app), None).await
 }

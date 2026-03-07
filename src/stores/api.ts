@@ -201,8 +201,9 @@ export const useApiStore = defineStore('api', () => {
       const request: UpdateApiRequest = {
         profile: draft.value.profile,
         original_profile: selectedApi.value.profile,
-        endpoint: draft.value.endpoint,
-        key: draft.value.key,
+        provider: draft.value.provider,
+        base_url: draft.value.base_url,
+        api_key: draft.value.api_key,
         model: draft.value.model,
         default: draft.value.default,
         enabled: draft.value.enabled,

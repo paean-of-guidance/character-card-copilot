@@ -24,4 +24,3 @@ pub struct SessionInfo {
     pub status: SessionStatus,
     pub last_context_tokens: usize,
 }
-

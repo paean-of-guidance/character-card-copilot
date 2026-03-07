@@ -6,7 +6,7 @@ import { useAppStore } from '@/stores/app'
 import { useApiStore } from '@/stores/api'
 import { useModal } from '@/composables/useModal'
 import { useNotification } from '@/composables/useNotification'
-import type { ApiConfig } from '@/types/api'
+import type { ApiConfig, ApiProvider } from '@/types/api'
 import ApiList from '@/components/ApiList.vue'
 import ModelSelect from '@/components/ModelSelect.vue'
 import NewApiDialog from '@/components/NewApiDialog.vue'
@@ -19,6 +19,13 @@ const { showErrorToast, showInfoToast, showSuccessToast, showWarningToast } = us
 const showNewApiDialog = ref(false)
 const searchQuery = ref('')
 
+const providerOptions: Array<{ value: ApiProvider; label: string; baseUrl: string }> = [
+  { value: 'open_ai_compatible', label: 'OpenAI Compatible', baseUrl: 'https://api.openai.com/v1' },
+  { value: 'open_ai_responses', label: 'OpenAI Responses', baseUrl: 'https://api.openai.com/v1' },
+  { value: 'claude', label: 'Claude', baseUrl: 'https://api.anthropic.com' },
+  { value: 'gemini_v1_beta', label: 'Gemini v1beta', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+]
+
 const { apis, selectedProfile, selectedApi, draft, dirty, saving, saveError, testing, lastTestResult } =
   storeToRefs(apiStore)
 
@@ -27,7 +34,7 @@ const hasSelection = computed(() => {
 })
 
 const hasDraftCredentials = computed(() => {
-  return !!draft.value?.endpoint.trim() && !!draft.value?.key.trim()
+  return !!draft.value?.base_url.trim() && !!draft.value?.api_key.trim()
 })
 
 const canEnableDraft = computed(() => {
@@ -47,16 +54,30 @@ const canSetDefault = computed(() => {
 })
 
 const endpointSummary = computed(() => {
-  if (!draft.value?.endpoint) {
+  if (!draft.value?.base_url) {
     return '未设置端点'
   }
 
   try {
-    return new URL(draft.value.endpoint).host
+    return new URL(draft.value.base_url).host
   } catch {
-    return draft.value.endpoint
+    return draft.value.base_url
   }
 })
+
+function handleProviderChange(provider: ApiProvider) {
+  patchDraftField('provider', provider)
+
+  const option = providerOptions.find((item) => item.value === provider)
+  const currentDraft = draft.value
+  if (!currentDraft || !option) {
+    return
+  }
+
+  if (!currentDraft.base_url || providerOptions.some((item) => item.baseUrl === currentDraft.base_url)) {
+    patchDraftField('base_url', option.baseUrl)
+  }
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -137,7 +158,7 @@ async function handleTestConnection() {
     if (result.success) {
       showSuccessToast(result.message, '连接成功')
     } else {
-      showWarningToast(result.message, '连接未通过')
+      showWarningToast(result.error ? `${result.message}：${result.error}` : result.message, '连接未通过')
     }
   } catch (error) {
     showErrorToast(getErrorMessage(error), '测试失败')
@@ -333,18 +354,31 @@ function handleApiCreated(api: ApiConfig) {
                 </label>
 
                 <label class="block text-sm">
+                  <span class="mb-2 block font-medium text-gray-700">Provider</span>
+                  <select
+                    :value="draft.provider"
+                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                    @change="handleProviderChange(($event.target as HTMLSelectElement).value as ApiProvider)"
+                  >
+                    <option v-for="option in providerOptions" :key="option.value" :value="option.value">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label class="block text-sm">
                   <span class="mb-2 block font-medium text-gray-700">API 端点</span>
                   <input
-                    :value="draft.endpoint"
+                    :value="draft.base_url"
                     type="text"
                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
                     placeholder="https://api.example.com/v1"
-                    @input="patchDraftField('endpoint', ($event.target as HTMLInputElement).value)"
+                    @input="patchDraftField('base_url', ($event.target as HTMLInputElement).value)"
                   />
                 </label>
 
                 <div class="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
-                  建议填写标准 OpenAI 兼容端点，例如带有 `/v1` 的完整地址。
+                  Base URL 将按 provider 分流；OpenAI Responses、Claude、Gemini 不再共用同一套端点约定。
                 </div>
               </div>
             </div>
@@ -355,11 +389,11 @@ function handleApiCreated(api: ApiConfig) {
                 <label class="block text-sm">
                   <span class="mb-2 block font-medium text-gray-700">API 密钥</span>
                   <input
-                    :value="draft.key"
+                    :value="draft.api_key"
                     type="password"
                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
                     placeholder="sk-..."
-                    @input="patchDraftField('key', ($event.target as HTMLInputElement).value)"
+                    @input="patchDraftField('api_key', ($event.target as HTMLInputElement).value)"
                   />
                 </label>
 
@@ -389,7 +423,10 @@ function handleApiCreated(api: ApiConfig) {
                   class="rounded-2xl border px-4 py-3 text-sm"
                   :class="lastTestResult.success ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'"
                 >
-                  {{ lastTestResult.message }}
+                  <div>{{ lastTestResult.message }}</div>
+                  <div v-if="lastTestResult.error" class="mt-2 whitespace-pre-wrap break-all text-xs opacity-80">
+                    {{ lastTestResult.error }}
+                  </div>
                 </div>
 
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

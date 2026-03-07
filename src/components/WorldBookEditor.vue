@@ -94,6 +94,7 @@ const showEditor = computed(() => {
 
 // 事件监听器清理函数
 let unlistenWorldBookCreated: UnlistenFn | null = null;
+let unlistenWorldBookDeleted: UnlistenFn | null = null;
 let unlistenToolExecuted: UnlistenFn | null = null;
 
 // 生命周期
@@ -106,6 +107,16 @@ onMounted(async () => {
     const payload = event.payload as { character_uuid: string; entry_id: number; entry_name?: string; keys: string[] };
 
     // 只有当事件是针对当前角色时才刷新
+    if (payload.character_uuid === props.characterUuid) {
+      devLog('✅ 刷新世界书数据...');
+      await worldBookStore.loadWorldBook(props.characterUuid);
+    }
+  });
+
+  unlistenWorldBookDeleted = await listen('world-book-entry-deleted', async (event) => {
+    devLog('🗑️ 收到世界书条目删除事件:', event.payload);
+    const payload = event.payload as { character_uuid: string; entry_id: number; entry_name?: string; keys: string[] };
+
     if (payload.character_uuid === props.characterUuid) {
       devLog('✅ 刷新世界书数据...');
       await worldBookStore.loadWorldBook(props.characterUuid);
@@ -129,6 +140,9 @@ onUnmounted(() => {
   // 清理事件监听器
   if (unlistenWorldBookCreated) {
     unlistenWorldBookCreated();
+  }
+  if (unlistenWorldBookDeleted) {
+    unlistenWorldBookDeleted();
   }
   if (unlistenToolExecuted) {
     unlistenToolExecuted();

@@ -1,43 +1,95 @@
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use super::file_utils::FileUtils;
+use crate::ai_chat::{AIChatService, ChatCompletionRequest, ChatMessage, MessageRole};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiProvider {
+    OpenAiCompatible,
+    OpenAiResponses,
+    Claude,
+    GeminiV1Beta,
+}
+
+impl Default for ApiProvider {
+    fn default() -> Self {
+        Self::OpenAiCompatible
+    }
+}
+
+impl ApiProvider {
+    pub fn default_base_url(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => "https://api.openai.com/v1",
+            Self::OpenAiResponses => "https://api.openai.com/v1",
+            Self::Claude => "https://api.anthropic.com",
+            Self::GeminiV1Beta => "https://generativelanguage.googleapis.com/v1beta",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::OpenAiCompatible => "OpenAI Compatible",
+            Self::OpenAiResponses => "OpenAI Responses",
+            Self::Claude => "Claude",
+            Self::GeminiV1Beta => "Gemini v1beta",
+        }
+    }
+}
 
 /// API配置结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub profile: String,
-    pub endpoint: String,
-    pub key: String,
+    #[serde(default)]
+    pub provider: ApiProvider,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub provider_explicit: bool,
+    #[serde(alias = "endpoint")]
+    pub base_url: String,
+    #[serde(alias = "key")]
+    pub api_key: String,
     pub model: String,
     pub default: bool,
     pub enabled: bool,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// 创建API请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateApiRequest {
     pub profile: String,
-    pub endpoint: Option<String>,
-    pub key: Option<String>,
+    pub provider: Option<ApiProvider>,
+    #[serde(alias = "endpoint")]
+    pub base_url: Option<String>,
+    #[serde(alias = "key")]
+    pub api_key: Option<String>,
     pub model: Option<String>,
     pub default: Option<bool>,
     pub enabled: Option<bool>,
 }
 
 /// 更新API请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct UpdateApiRequest {
     pub profile: String,
     pub original_profile: String,
-    pub endpoint: Option<String>,
-    pub key: Option<String>,
+    pub provider: Option<ApiProvider>,
+    #[serde(alias = "endpoint")]
+    pub base_url: Option<String>,
+    #[serde(alias = "key")]
+    pub api_key: Option<String>,
     pub model: Option<String>,
     pub default: Option<bool>,
     pub enabled: Option<bool>,
 }
 
 /// API测试结果
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiTestResult {
     pub success: bool,
     pub message: String,
@@ -45,10 +97,12 @@ pub struct ApiTestResult {
 }
 
 /// 模型信息
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
     pub object: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owned_by: Option<String>,
 }
 
 fn normalize_profile(profile: &str) -> String {
@@ -91,11 +145,54 @@ fn ensure_unique_profile(
     Ok(())
 }
 
-fn build_new_config(configs: &mut Vec<ApiConfig>, request: CreateApiRequest) -> Result<ApiConfig, String> {
+fn normalize_base_url(provider: ApiProvider, base_url: String) -> String {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        provider.default_base_url().to_string()
+    } else {
+        trimmed.trim_end_matches('/').to_string()
+    }
+}
+
+fn normalize_test_reply(content: &str) -> String {
+    content
+        .trim()
+        .trim_matches(|ch: char| matches!(ch, '"' | '\'' | '!' | '.' | ',' | '，' | '。' | '！'))
+        .trim()
+        .to_uppercase()
+}
+
+fn migrate_config(config: ApiConfig) -> ApiConfig {
+    let provider = if config.provider_explicit {
+        config.provider
+    } else {
+        match config.provider {
+            ApiProvider::OpenAiResponses => ApiProvider::OpenAiCompatible,
+            provider => provider,
+        }
+    };
+
+    ApiConfig {
+        profile: normalize_profile(&config.profile),
+        provider,
+        provider_explicit: true,
+        base_url: normalize_base_url(provider, config.base_url),
+        api_key: config.api_key.trim().to_string(),
+        model: config.model.trim().to_string(),
+        default: config.default,
+        enabled: config.enabled,
+    }
+}
+
+fn build_new_config(
+    configs: &mut Vec<ApiConfig>,
+    request: CreateApiRequest,
+) -> Result<ApiConfig, String> {
     let profile = normalize_profile(&request.profile);
     validate_profile(&profile)?;
     ensure_unique_profile(configs, &profile, None)?;
 
+    let provider = request.provider.unwrap_or_default();
     let enabled = request.enabled.unwrap_or(false);
     let default = request.default.unwrap_or(false);
 
@@ -111,15 +208,20 @@ fn build_new_config(configs: &mut Vec<ApiConfig>, request: CreateApiRequest) -> 
 
     Ok(ApiConfig {
         profile,
-        endpoint: normalize_optional_text(request.endpoint),
-        key: normalize_optional_text(request.key),
+        provider,
+        provider_explicit: true,
+        base_url: normalize_base_url(provider, normalize_optional_text(request.base_url)),
+        api_key: normalize_optional_text(request.api_key),
         model: normalize_optional_text(request.model),
         default,
         enabled,
     })
 }
 
-fn update_config_in_configs(configs: &mut [ApiConfig], request: UpdateApiRequest) -> Result<(), String> {
+fn update_config_in_configs(
+    configs: &mut [ApiConfig],
+    request: UpdateApiRequest,
+) -> Result<(), String> {
     let config_index = configs
         .iter()
         .position(|config| config.profile == request.original_profile)
@@ -132,11 +234,18 @@ fn update_config_in_configs(configs: &mut [ApiConfig], request: UpdateApiRequest
     let mut updated_config = configs[config_index].clone();
     updated_config.profile = profile;
 
-    if let Some(endpoint) = request.endpoint {
-        updated_config.endpoint = endpoint.trim().to_string();
+    if let Some(provider) = request.provider {
+        updated_config.provider = provider;
+        updated_config.provider_explicit = true;
+        if request.base_url.is_none() {
+            updated_config.base_url = normalize_base_url(provider, updated_config.base_url.clone());
+        }
     }
-    if let Some(key) = request.key {
-        updated_config.key = key.trim().to_string();
+    if let Some(base_url) = request.base_url {
+        updated_config.base_url = normalize_base_url(updated_config.provider, base_url);
+    }
+    if let Some(api_key) = request.api_key {
+        updated_config.api_key = api_key.trim().to_string();
     }
     if let Some(model) = request.model {
         updated_config.model = model.trim().to_string();
@@ -177,21 +286,25 @@ fn set_default_in_configs(configs: &mut [ApiConfig], profile: &str) -> Result<()
         return Err("启用后的配置才能设为默认".to_string());
     }
 
-    for (index, config) in configs.iter_mut().enumerate() {
-        config.default = index == target_index;
+    for config in configs.iter_mut() {
+        config.default = false;
     }
+    configs[target_index].default = true;
 
     Ok(())
 }
 
-fn toggle_enabled_in_configs(configs: &mut [ApiConfig], profile: &str, enabled: bool) -> Result<(), String> {
+fn toggle_enabled_in_configs(
+    configs: &mut [ApiConfig],
+    profile: &str,
+    enabled: bool,
+) -> Result<(), String> {
     let config = configs
         .iter_mut()
         .find(|config| config.profile == profile)
         .ok_or_else(|| format!("未找到配置 '{}'", profile))?;
 
     config.enabled = enabled;
-
     if !enabled {
         config.default = false;
     }
@@ -199,76 +312,78 @@ fn toggle_enabled_in_configs(configs: &mut [ApiConfig], profile: &str, enabled: 
     Ok(())
 }
 
-/// API配置服务
 pub struct ApiConfigService;
 
 impl ApiConfigService {
-    /// 获取API配置文件路径
-    fn get_api_config_file(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    fn get_api_config_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
         let app_data_dir = FileUtils::get_app_data_dir(app_handle)?;
-        let api_dir = app_data_dir.join("api");
-        FileUtils::ensure_dir_exists(&api_dir)?;
-        Ok(api_dir.join("apis.json"))
+        Ok(app_data_dir.join("api_configs.json"))
     }
 
-    /// 读取所有API配置
-    fn read_api_configs(app_handle: &tauri::AppHandle) -> Result<Vec<ApiConfig>, String> {
-        let config_file = Self::get_api_config_file(app_handle)?;
-
-        if !config_file.exists() {
+    fn load_configs(app_handle: &tauri::AppHandle) -> Result<Vec<ApiConfig>, String> {
+        let file_path = Self::get_api_config_path(app_handle)?;
+        if !file_path.exists() {
             return Ok(Vec::new());
         }
 
-        FileUtils::read_json_file::<Vec<ApiConfig>>(&config_file)
+        let configs = FileUtils::read_json_file::<Vec<ApiConfig>>(&file_path)?
+            .into_iter()
+            .map(migrate_config)
+            .collect::<Vec<_>>();
+
+        Ok(configs)
     }
 
-    /// 写入API配置
-    fn write_api_configs(app_handle: &tauri::AppHandle, configs: &[ApiConfig]) -> Result<(), String> {
-        let config_file = Self::get_api_config_file(app_handle)?;
-        FileUtils::write_json_file(&config_file, configs)
+    fn save_configs(app_handle: &tauri::AppHandle, configs: &[ApiConfig]) -> Result<(), String> {
+        let file_path = Self::get_api_config_path(app_handle)?;
+        FileUtils::write_json_file(&file_path, configs)
     }
 
-    /// 获取所有API配置
     pub fn get_all_api_configs(app_handle: &tauri::AppHandle) -> Result<Vec<ApiConfig>, String> {
-        Self::read_api_configs(app_handle)
+        let configs = Self::load_configs(app_handle)?;
+        Self::save_configs(app_handle, &configs)?;
+        Ok(configs)
     }
 
-    /// 根据配置名称获取API配置
-    pub fn get_api_config_by_profile(app_handle: &tauri::AppHandle, profile: &str) -> Result<Option<ApiConfig>, String> {
-        let configs = Self::read_api_configs(app_handle)?;
+    pub fn get_api_config_by_profile(
+        app_handle: &tauri::AppHandle,
+        profile: &str,
+    ) -> Result<Option<ApiConfig>, String> {
+        let configs = Self::load_configs(app_handle)?;
         Ok(configs.into_iter().find(|config| config.profile == profile))
     }
 
-    /// 获取默认API配置
-    pub fn get_default_api_config(app_handle: &tauri::AppHandle) -> Result<Option<ApiConfig>, String> {
-        let configs = Self::read_api_configs(app_handle)?;
-        Ok(configs.into_iter().find(|config| config.default))
+    pub fn get_default_api_config(
+        app_handle: &tauri::AppHandle,
+    ) -> Result<Option<ApiConfig>, String> {
+        let configs = Self::load_configs(app_handle)?;
+        Ok(configs
+            .into_iter()
+            .find(|config| config.default && config.enabled))
     }
 
-    /// 创建新的API配置
-    pub fn create_api_config(app_handle: &tauri::AppHandle, request: CreateApiRequest) -> Result<ApiConfig, String> {
-        let mut configs = Self::read_api_configs(app_handle)?;
+    pub fn create_api_config(
+        app_handle: &tauri::AppHandle,
+        request: CreateApiRequest,
+    ) -> Result<ApiConfig, String> {
+        let mut configs = Self::load_configs(app_handle)?;
         let new_config = build_new_config(&mut configs, request)?;
-
         configs.push(new_config.clone());
-        Self::write_api_configs(app_handle, &configs)?;
-
+        Self::save_configs(app_handle, &configs)?;
         Ok(new_config)
     }
 
-    /// 更新API配置
-    pub fn update_api_config(app_handle: &tauri::AppHandle, request: UpdateApiRequest) -> Result<(), String> {
-        let mut configs = Self::read_api_configs(app_handle)?;
+    pub fn update_api_config(
+        app_handle: &tauri::AppHandle,
+        request: UpdateApiRequest,
+    ) -> Result<(), String> {
+        let mut configs = Self::load_configs(app_handle)?;
         update_config_in_configs(&mut configs, request)?;
-
-        Self::write_api_configs(app_handle, &configs)?;
-        Ok(())
+        Self::save_configs(app_handle, &configs)
     }
 
-    /// 删除API配置
     pub fn delete_api_config(app_handle: &tauri::AppHandle, profile: &str) -> Result<(), String> {
-        let mut configs = Self::read_api_configs(app_handle)?;
-
+        let mut configs = Self::load_configs(app_handle)?;
         let original_len = configs.len();
         configs.retain(|config| config.profile != profile);
 
@@ -276,110 +391,152 @@ impl ApiConfigService {
             return Err(format!("未找到配置 '{}'", profile));
         }
 
-        Self::write_api_configs(app_handle, &configs)?;
-        Ok(())
+        Self::save_configs(app_handle, &configs)
     }
 
-    /// 设置默认API配置
-    pub fn set_default_api_config(app_handle: &tauri::AppHandle, profile: &str) -> Result<(), String> {
-        let mut configs = Self::read_api_configs(app_handle)?;
+    pub fn set_default_api_config(
+        app_handle: &tauri::AppHandle,
+        profile: &str,
+    ) -> Result<(), String> {
+        let mut configs = Self::load_configs(app_handle)?;
         set_default_in_configs(&mut configs, profile)?;
-
-        Self::write_api_configs(app_handle, &configs)?;
-        Ok(())
+        Self::save_configs(app_handle, &configs)
     }
 
-    /// 启用/禁用API配置
-    pub fn toggle_api_config(app_handle: &tauri::AppHandle, profile: &str, enabled: bool) -> Result<(), String> {
-        let mut configs = Self::read_api_configs(app_handle)?;
+    pub fn toggle_api_config(
+        app_handle: &tauri::AppHandle,
+        profile: &str,
+        enabled: bool,
+    ) -> Result<(), String> {
+        let mut configs = Self::load_configs(app_handle)?;
         toggle_enabled_in_configs(&mut configs, profile, enabled)?;
-
-        Self::write_api_configs(app_handle, &configs)?;
-        Ok(())
+        Self::save_configs(app_handle, &configs)
     }
 
-    /// 测试API连接
-    pub async fn test_api_connection(_app_handle: &tauri::AppHandle, config: &ApiConfig) -> Result<ApiTestResult, String> {
-        if config.endpoint.is_empty() || config.key.is_empty() {
+    pub async fn test_api_connection(
+        _app_handle: &tauri::AppHandle,
+        config: &ApiConfig,
+    ) -> Result<ApiTestResult, String> {
+        if config.base_url.is_empty() || config.api_key.is_empty() || config.model.is_empty() {
             return Ok(ApiTestResult {
                 success: false,
-                message: "API端点和密钥不能为空".to_string(),
+                message: "API Base URL、密钥和模型不能为空".to_string(),
                 error: Some("Missing required fields".to_string()),
             });
         }
 
-        // 构建测试请求URL
-        let models_url = if config.endpoint.ends_with('/') {
-            format!("{}models", config.endpoint)
-        } else {
-            format!("{}/models", config.endpoint)
+        let request = ChatCompletionRequest {
+            model: config.model.clone(),
+            messages: vec![ChatMessage {
+                role: MessageRole::User,
+                content: "Reply with exactly one short word: PONG".to_string(),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: Some(0.0),
+            max_tokens: Some(4096),
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop: None,
+            stream: Some(false),
+            tools: None,
+            tool_choice: None,
         };
 
-        // 创建HTTP客户端
-        let client = reqwest::Client::new();
-
-        let result = match client
-            .get(&models_url)
-            .header("Authorization", format!("Bearer {}", config.key))
-            .header("Content-Type", "application/json")
-            .send()
-            .await
+        let result = match AIChatService::create_chat_completion(config, &request, None, None).await
         {
             Ok(response) => {
-                if response.status().is_success() {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(_) => ApiTestResult {
-                            success: true,
-                            message: "连接测试成功".to_string(),
-                            error: None,
-                        },
-                        Err(e) => ApiTestResult {
-                            success: false,
-                            message: "响应格式错误".to_string(),
-                            error: Some(format!("解析响应失败: {}", e)),
-                        },
+                let reply = response
+                    .choices
+                    .first()
+                    .map(|choice| choice.message.content.as_str())
+                    .unwrap_or_default();
+                let normalized_reply = normalize_test_reply(reply);
+
+                if normalized_reply.contains("PONG") {
+                    ApiTestResult {
+                        success: true,
+                        message: format!("{} 连通性测试成功", config.provider.label()),
+                        error: None,
+                    }
+                } else if !normalized_reply.is_empty() {
+                    ApiTestResult {
+                        success: true,
+                        message: format!(
+                            "{} 已成功响应，虽然未严格返回 PONG，但连通性测试通过",
+                            config.provider.label()
+                        ),
+                        error: Some(format!("Model reply: {}", reply.trim())),
                     }
                 } else {
                     ApiTestResult {
                         success: false,
-                        message: format!("连接失败: {}", response.status()),
-                        error: Some(format!("HTTP错误: {}", response.status())),
+                        message: "模型调用成功，但返回了空文本".to_string(),
+                        error: Some(
+                            "Unexpected reply: <empty>. 这通常是推理模型在较低 max_tokens 下只消耗了隐藏推理预算。"
+                                .to_string(),
+                        ),
                     }
                 }
             }
-            Err(e) => ApiTestResult {
+            Err(error) => ApiTestResult {
                 success: false,
-                message: "网络连接失败".to_string(),
-                error: Some(format!("网络错误: {}", e)),
+                message: "真实推理测试失败".to_string(),
+                error: Some(error),
             },
         };
 
         Ok(result)
     }
 
-    /// 获取可用模型列表
-    pub async fn fetch_models(_app_handle: &tauri::AppHandle, config: &ApiConfig) -> Result<Vec<ModelInfo>, String> {
-        if config.endpoint.is_empty() || config.key.is_empty() {
-            return Err("API端点和密钥不能为空".to_string());
+    pub async fn fetch_models(
+        _app_handle: &tauri::AppHandle,
+        config: &ApiConfig,
+    ) -> Result<Vec<ModelInfo>, String> {
+        if config.base_url.is_empty() || config.api_key.is_empty() {
+            return Err("API Base URL 和密钥不能为空".to_string());
         }
 
-        // 构建模型请求URL
-        let models_url = if config.endpoint.ends_with('/') {
-            format!("{}models", config.endpoint)
-        } else {
-            format!("{}/models", config.endpoint)
-        };
-
-        // 创建HTTP客户端
         let client = reqwest::Client::new();
-
-        let response = client
-            .get(&models_url)
-            .header("Authorization", format!("Bearer {}", config.key))
-            .header("Content-Type", "application/json")
-            .send()
-            .await
-            .map_err(|e| format!("发送请求失败: {}", e))?;
+        let response = match config.provider {
+            ApiProvider::OpenAiCompatible => {
+                client
+                    .get(format!("{}/models", config.base_url.trim_end_matches('/')))
+                    .bearer_auth(&config.api_key)
+                    .header("Content-Type", "application/json")
+                    .send()
+                    .await
+            }
+            ApiProvider::OpenAiResponses => {
+                client
+                    .get(format!("{}/models", config.base_url.trim_end_matches('/')))
+                    .bearer_auth(&config.api_key)
+                    .header("Content-Type", "application/json")
+                    .send()
+                    .await
+            }
+            ApiProvider::Claude => {
+                client
+                    .get(format!(
+                        "{}/v1/models",
+                        config.base_url.trim_end_matches('/')
+                    ))
+                    .header("x-api-key", &config.api_key)
+                    .header("anthropic-version", "2023-06-01")
+                    .send()
+                    .await
+            }
+            ApiProvider::GeminiV1Beta => {
+                client
+                    .get(format!("{}/models", config.base_url.trim_end_matches('/')))
+                    .query(&[("key", config.api_key.clone())])
+                    .send()
+                    .await
+            }
+        }
+        .map_err(|error| format!("发送请求失败: {}", error))?;
 
         if !response.status().is_success() {
             return Err(format!("获取模型列表失败: {}", response.status()));
@@ -388,23 +545,66 @@ impl ApiConfigService {
         let response_json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| format!("解析响应失败: {}", e))?;
+            .map_err(|error| format!("解析响应失败: {}", error))?;
 
-        // 解析模型列表（OpenAI格式）
-        let models = if let Some(data) = response_json.get("data").and_then(|d| d.as_array()) {
-            data.iter()
-                .filter_map(|model| {
-                    let id = model.get("id")?.as_str()?.to_string();
-                    let object = model.get("object")
-                        .and_then(|o| o.as_str())
-                        .unwrap_or("model")
-                        .to_string();
-                    Some(ModelInfo { id, object })
+        let models = match config.provider {
+            ApiProvider::OpenAiCompatible | ApiProvider::OpenAiResponses | ApiProvider::Claude => {
+                response_json
+                    .get("data")
+                    .and_then(|value| value.as_array())
+                    .map(|data| {
+                        data.iter()
+                            .filter_map(|model| {
+                                let id = model.get("id")?.as_str()?.to_string();
+                                let object = model
+                                    .get("object")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("model")
+                                    .to_string();
+                                let owned_by = model
+                                    .get("owned_by")
+                                    .and_then(|value| value.as_str())
+                                    .map(|value| value.to_string())
+                                    .or_else(|| match config.provider {
+                                        ApiProvider::Claude => Some("anthropic".to_string()),
+                                        _ => None,
+                                    });
+
+                                Some(ModelInfo {
+                                    id,
+                                    object,
+                                    owned_by,
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            }
+            ApiProvider::GeminiV1Beta => response_json
+                .get("models")
+                .and_then(|value| value.as_array())
+                .map(|data| {
+                    data.iter()
+                        .filter_map(|model| {
+                            let id = model
+                                .get("baseModelId")
+                                .and_then(|value| value.as_str())
+                                .map(|value| value.to_string())
+                                .or_else(|| {
+                                    model.get("name").and_then(|value| value.as_str()).map(
+                                        |value| value.trim_start_matches("models/").to_string(),
+                                    )
+                                })?;
+
+                            Some(ModelInfo {
+                                id,
+                                object: "model".to_string(),
+                                owned_by: Some("google".to_string()),
+                            })
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .collect()
-        } else {
-            // 如果不是标准格式，返回空列表
-            Vec::new()
+                .unwrap_or_default(),
         };
 
         Ok(models)
@@ -419,17 +619,21 @@ mod tests {
         vec![
             ApiConfig {
                 profile: "Primary".to_string(),
-                endpoint: "https://example.com/v1".to_string(),
-                key: "key-1".to_string(),
+                provider: ApiProvider::OpenAiCompatible,
+                provider_explicit: true,
+                base_url: "https://api.openai.com/v1".to_string(),
+                api_key: "key-1".to_string(),
                 model: "gpt-4.1".to_string(),
                 default: true,
                 enabled: true,
             },
             ApiConfig {
                 profile: "Backup".to_string(),
-                endpoint: "https://backup.example.com/v1".to_string(),
-                key: "key-2".to_string(),
-                model: "gpt-4.1-mini".to_string(),
+                provider: ApiProvider::Claude,
+                provider_explicit: true,
+                base_url: "https://api.anthropic.com".to_string(),
+                api_key: "key-2".to_string(),
+                model: "claude-3-5-sonnet-latest".to_string(),
                 default: false,
                 enabled: true,
             },
@@ -443,9 +647,10 @@ mod tests {
             &mut configs,
             CreateApiRequest {
                 profile: " Draft ".to_string(),
-                endpoint: Some(" https://draft.example.com/v1 ".to_string()),
-                key: Some(" key-3 ".to_string()),
-                model: Some(" model-3 ".to_string()),
+                provider: Some(ApiProvider::GeminiV1Beta),
+                base_url: Some(" https://generativelanguage.googleapis.com/v1beta ".to_string()),
+                api_key: Some(" key-3 ".to_string()),
+                model: Some(" gemini-2.0-flash ".to_string()),
                 default: Some(true),
                 enabled: Some(false),
             },
@@ -462,8 +667,9 @@ mod tests {
             UpdateApiRequest {
                 profile: "Backup".to_string(),
                 original_profile: "Primary".to_string(),
-                endpoint: None,
-                key: None,
+                provider: None,
+                base_url: None,
+                api_key: None,
                 model: None,
                 default: None,
                 enabled: None,
@@ -488,10 +694,47 @@ mod tests {
     #[test]
     fn disabling_default_config_clears_default_flag() {
         let mut configs = sample_configs();
-
         toggle_enabled_in_configs(&mut configs, "Primary", false).unwrap();
 
         assert!(!configs[0].enabled);
         assert!(!configs[0].default);
+    }
+
+    #[test]
+    fn migration_maps_legacy_fields() {
+        let legacy_json = serde_json::json!({
+            "profile": "Legacy",
+            "endpoint": "https://api.openai.com/v1/",
+            "key": "sk-legacy",
+            "model": "gpt-4.1-mini",
+            "default": false,
+            "enabled": true
+        });
+
+        let config: ApiConfig = serde_json::from_value(legacy_json).unwrap();
+        let migrated = migrate_config(config);
+
+        assert_eq!(migrated.provider, ApiProvider::OpenAiCompatible);
+        assert_eq!(migrated.base_url, "https://api.openai.com/v1");
+        assert_eq!(migrated.api_key, "sk-legacy");
+        assert!(migrated.provider_explicit);
+    }
+
+    #[test]
+    fn migration_preserves_explicit_openai_responses_provider() {
+        let config = ApiConfig {
+            profile: "Responses".to_string(),
+            provider: ApiProvider::OpenAiResponses,
+            provider_explicit: true,
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-live".to_string(),
+            model: "gpt-5-mini".to_string(),
+            default: false,
+            enabled: true,
+        };
+
+        let migrated = migrate_config(config);
+
+        assert_eq!(migrated.provider, ApiProvider::OpenAiResponses);
     }
 }

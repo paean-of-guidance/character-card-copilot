@@ -1,14 +1,13 @@
-use crate::ai_chat::ChatTool;
-use crate::ai_tools::{ToolCallRequest, ToolResult};
+use crate::ai_tools::{ToolCallRequest, ToolDefinition, ToolResult};
 use crate::tools::ToolRegistry;
 
 #[tauri::command]
-pub async fn get_available_tools() -> Result<Vec<ChatTool>, String> {
+pub async fn get_available_tools() -> Result<Vec<ToolDefinition>, String> {
     Ok(ToolRegistry::get_available_tools_global())
 }
 
 #[tauri::command]
-pub async fn get_tools_by_category(category: String) -> Result<Vec<ChatTool>, String> {
+pub async fn get_tools_by_category(category: String) -> Result<Vec<ToolDefinition>, String> {
     Ok(ToolRegistry::get_tools_by_category_global(&category))
 }
 

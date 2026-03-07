@@ -1,5 +1,5 @@
 import type { CharacterData } from './character'
-import type { ChatMessage } from './api'
+import type { ChatMessage, MessageRole, ToolCall } from './api'
 
 // 角色加载事件载荷
 export interface CharacterLoadedPayload {
@@ -27,9 +27,47 @@ export interface MessageSentPayload {
 export interface MessageReceivedPayload {
   uuid: string
   message: ChatMessage
+  target_message_id?: string
   timestamp: number
   /** 中间消息（包括 assistant with tool_calls 和 tool results） */
   intermediate_messages?: ChatMessage[]
+}
+
+export type ToolExecutionPhase = 'started' | 'succeeded' | 'failed'
+
+export interface MessageStreamDeltaPayload {
+  uuid: string
+  role: MessageRole
+  target_message_id: string
+  delta: string
+  is_finished: boolean
+  is_aborted: boolean
+  timestamp: number
+}
+
+export type ReasoningDeltaKind = 'reasoning' | 'thought_signature'
+
+export interface MessageReasoningDeltaPayload {
+  uuid: string
+  target_message_id: string
+  delta: string
+  kind: ReasoningDeltaKind
+  is_finished: boolean
+  is_aborted: boolean
+  timestamp: number
+}
+
+export interface ToolExecutionStatusPayload {
+  uuid: string
+  target_message_id: string
+  tool_call_id: string
+  tool_name: string
+  phase: ToolExecutionPhase
+  tool_call?: ToolCall
+  result?: any
+  error?: string
+  execution_time_ms?: number
+  timestamp: number
 }
 
 // 上下文构建完成事件载荷

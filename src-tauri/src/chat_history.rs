@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 use std::io::Write;
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,8 @@ impl ChatHistoryManager {
     }
 
     fn get_history_file_path(&self) -> Result<PathBuf, String> {
-        let app_dir = self.app_handle
+        let app_dir = self
+            .app_handle
             .path()
             .app_data_dir()
             .map_err(|e| format!("获取应用数据目录失败: {}", e))?;
@@ -49,8 +50,7 @@ impl ChatHistoryManager {
         let character_dir = app_dir.join("character-cards").join(&self.character_id);
 
         // 确保目录存在
-        fs::create_dir_all(&character_dir)
-            .map_err(|e| format!("创建角色目录失败: {}", e))?;
+        fs::create_dir_all(&character_dir).map_err(|e| format!("创建角色目录失败: {}", e))?;
 
         Ok(character_dir.join("chat_history.jsonl"))
     }
@@ -64,7 +64,7 @@ impl ChatHistoryManager {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs() as i64
+                    .as_secs() as i64,
             );
         }
 
@@ -91,8 +91,8 @@ impl ChatHistoryManager {
         }
 
         let file_path = file_path.unwrap();
-        let content = fs::read_to_string(&file_path)
-            .map_err(|e| format!("读取历史文件失败: {}", e))?;
+        let content =
+            fs::read_to_string(&file_path).map_err(|e| format!("读取历史文件失败: {}", e))?;
 
         let lines: Vec<&str> = content.trim().split('\n').collect();
         let mut messages = Vec::new();
@@ -115,8 +115,7 @@ impl ChatHistoryManager {
         let file_path = self.get_history_file_path()?;
 
         if file_path.exists() {
-            fs::write(&file_path, "")
-                .map_err(|e| format!("清空历史文件失败: {}", e))?;
+            fs::write(&file_path, "").map_err(|e| format!("清空历史文件失败: {}", e))?;
         }
 
         Ok(())
@@ -129,10 +128,10 @@ impl ChatHistoryManager {
             .iter()
             .map(|msg| serde_json::to_string(msg).unwrap_or_default())
             .collect::<Vec<_>>()
-            .join("\n") + "\n";
+            .join("\n")
+            + "\n";
 
-        fs::write(&file_path, content)
-            .map_err(|e| format!("保存历史文件失败: {}", e))?;
+        fs::write(&file_path, content).map_err(|e| format!("保存历史文件失败: {}", e))?;
 
         Ok(())
     }

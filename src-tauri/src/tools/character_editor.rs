@@ -1,6 +1,8 @@
 use super::AIToolTrait;
-use crate::ai_tools::{ToolCallRequest, ToolResult};
-use crate::ai_chat::{ChatTool, ToolFunction, ToolParameters, ToolParameter as ChatToolParameter};
+use crate::ai_tools::{
+    ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
+    ToolParameters, ToolResult,
+};
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::CharacterStorage;
@@ -213,7 +215,7 @@ impl AIToolTrait for EditCharacterTool {
         }
     }
 
-    fn to_chat_tool(&self) -> ChatTool {
+    fn to_tool_definition(&self) -> ToolDefinition {
         let mut properties = HashMap::new();
 
         // 添加所有参数到 properties
@@ -221,7 +223,9 @@ impl AIToolTrait for EditCharacterTool {
             "at_least_one_field".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("必须提供至少一个要编辑的字段（如description, personality等）".to_string()),
+                description: Some(
+                    "必须提供至少一个要编辑的字段（如description, personality等）".to_string(),
+                ),
                 enum_values: Some(vec!["edit_character".to_string()]),
                 items: None,
                 properties: None,
@@ -385,7 +389,7 @@ impl AIToolTrait for EditCharacterTool {
             },
         );
 
-        ChatTool {
+        ToolDefinition {
             tool_type: "function".to_string(),
             function: ToolFunction {
                 name: self.name().to_string(),

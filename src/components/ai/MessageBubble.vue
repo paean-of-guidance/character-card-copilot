@@ -9,8 +9,26 @@
     >
         <!-- 消息内容 -->
         <template v-if="!isEditing">
+            <div
+                v-if="role === 'assistant' && (reasoningContent || reasoningLoading)"
+                class="mb-3 rounded-md border border-gray-200 bg-gray-50"
+            >
+                <button
+                    class="w-full px-3 py-2 flex items-center justify-between text-left text-xs text-gray-600 hover:bg-gray-100 transition-colors"
+                    @click="$emit('toggleReasoning')"
+                >
+                    <span>{{ reasoningExpanded ? '▼' : '▶' }} 思考过程</span>
+                    <span v-if="reasoningLoading" class="text-blue-500">思考中...</span>
+                </button>
+                <div
+                    v-if="reasoningExpanded"
+                    class="px-3 pb-3 text-xs text-gray-600 whitespace-pre-wrap"
+                >
+                    {{ reasoningContent }}
+                </div>
+            </div>
             <MarkdownRenderer
-                v-if="role === 'assistant'"
+                v-if="role === 'assistant' && content"
                 :content="content"
                 class="text-sm"
             />
@@ -26,6 +44,12 @@
                 "
             >
                 {{ formatTime(timestamp) }}
+            </div>
+            <div
+                v-if="role === 'assistant' && loading"
+                class="mt-1 text-xs text-blue-500"
+            >
+                生成中...
             </div>
         </template>
 
@@ -123,6 +147,12 @@ interface Props {
     role: 'user' | 'assistant';
     /** 消息内容 */
     content: string;
+    /** 思考过程内容 */
+    reasoningContent?: string;
+    /** 思考过程是否展开 */
+    reasoningExpanded?: boolean;
+    /** 思考过程是否仍在流式中 */
+    reasoningLoading?: boolean;
     /** 时间戳 */
     timestamp: Date;
     /** 是否正在编辑 */
@@ -146,9 +176,14 @@ interface Emits {
     cancelEdit: [];
     /** 删除消息 */
     delete: [];
+    /** 切换思考过程展开状态 */
+    toggleReasoning: [];
 }
 
 const props = withDefaults(defineProps<Props>(), {
+    reasoningContent: '',
+    reasoningExpanded: false,
+    reasoningLoading: false,
     isEditing: false,
     loading: false,
     isLastMessage: false

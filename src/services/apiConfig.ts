@@ -118,10 +118,10 @@ export async function toggleApiConfig(profile: string, enabled: boolean): Promis
  * @param config API配置
  */
 export async function testApiConnection(config: ApiConfig): Promise<ApiTestResult> {
-  if (!config.endpoint || !config.key) {
+  if (!config.base_url || !config.api_key) {
     return {
       success: false,
-      message: 'API端点和密钥不能为空',
+      message: 'API Base URL 和密钥不能为空',
       error: 'Missing required fields'
     };
   }
@@ -144,8 +144,8 @@ export async function testApiConnection(config: ApiConfig): Promise<ApiTestResul
  * @param config API配置
  */
 export async function fetchModels(config: ApiConfig): Promise<ModelInfo[]> {
-  if (!config.endpoint || !config.key) {
-    throw new Error('API端点和密钥不能为空');
+  if (!config.base_url || !config.api_key) {
+    throw new Error('API Base URL 和密钥不能为空');
   }
 
   try {
@@ -178,8 +178,9 @@ export async function copyApiConfig(api: ApiConfig): Promise<ApiConfig> {
 
   const copyConfig: CreateApiRequest = {
     profile: newProfileName,
-    endpoint: api.endpoint,
-    key: api.key,
+    provider: api.provider,
+    base_url: api.base_url,
+    api_key: api.api_key,
     model: api.model,
     default: false, // 复制的配置不能是默认
     enabled: api.enabled, // 保持原有的启用状态

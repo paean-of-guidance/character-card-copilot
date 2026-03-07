@@ -5,7 +5,9 @@ use crate::character_storage::{CharacterData, CharacterStorage, TavernCardV2};
 const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
 
 #[tauri::command]
-pub async fn get_all_characters(app_handle: tauri::AppHandle) -> Result<Vec<CharacterData>, String> {
+pub async fn get_all_characters(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<CharacterData>, String> {
     CharacterStorage::get_all_characters(&app_handle)
 }
 
@@ -55,7 +57,9 @@ pub async fn update_character_field(
         "mes_example" => character_data.card.data.mes_example = field_value,
         "creator_notes" => character_data.card.data.creator_notes = field_value,
         "system_prompt" => character_data.card.data.system_prompt = field_value,
-        "post_history_instructions" => character_data.card.data.post_history_instructions = field_value,
+        "post_history_instructions" => {
+            character_data.card.data.post_history_instructions = field_value
+        }
         "alternate_greetings" => {
             character_data.card.data.alternate_greetings = field_value
                 .split(ALTERNATE_GREETING_MARKER)

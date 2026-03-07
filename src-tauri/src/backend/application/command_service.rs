@@ -32,9 +32,7 @@ impl CommandService {
         query: String,
     ) -> Result<Vec<CommandMetadata>, String> {
         let context = Self::build_context(app_handle);
-        Ok(COMMAND_REGISTRY
-            .search_commands(&query, &context)
-            .await)
+        Ok(COMMAND_REGISTRY.search_commands(&query, &context).await)
     }
 
     pub async fn execute_command(

@@ -1,9 +1,9 @@
-use async_trait::async_trait;
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::{CommandCategory, CommandMetadata, CommandResult};
-use crate::command_system::command::*;
 use crate::character_session::SESSION_MANAGER;
 use crate::chat_history::ChatHistoryManager;
+use crate::command_system::command::*;
+use async_trait::async_trait;
 
 /// /clear 命令 - 清空所有对话记录
 pub struct ClearCommand {
@@ -21,7 +21,9 @@ impl ClearCommand {
                 category: Some(CommandCategory::History),
                 priority: 1,
                 requires_confirmation: true,
-                confirmation_message: Some("确定要清空所有对话记录吗？此操作不可撤销。".to_string()),
+                confirmation_message: Some(
+                    "确定要清空所有对话记录吗？此操作不可撤销。".to_string(),
+                ),
             },
         }
     }
@@ -44,14 +46,10 @@ impl CommandExecutor for ClearCommand {
     }
 
     async fn execute(&self, context: CommandContext) -> Result<CommandResult, String> {
-        let uuid = context
-            .session_uuid
-            .ok_or("没有活跃的会话")?;
+        let uuid = context.session_uuid.ok_or("没有活跃的会话")?;
 
         // 获取会话
-        let mut session = SESSION_MANAGER
-            .get_session(&uuid)
-            .ok_or("会话不存在")?;
+        let mut session = SESSION_MANAGER.get_session(&uuid).ok_or("会话不存在")?;
 
         // 清空聊天历史（内存）
         session.clear_history();

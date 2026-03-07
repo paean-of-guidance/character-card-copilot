@@ -12,7 +12,9 @@ pub async fn initialize_command_system() {
 
 /// 获取可用命令列表
 #[tauri::command]
-pub async fn get_available_commands(app_handle: tauri::AppHandle) -> Result<Vec<CommandMetadata>, String> {
+pub async fn get_available_commands(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<CommandMetadata>, String> {
     CommandService::get_available_commands(&app_handle).await
 }
 

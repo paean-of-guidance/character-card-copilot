@@ -1,11 +1,9 @@
-/**
+/*
  * AI 后端事件监听 Composable
  *
- * 封装所有后端事件监听逻辑，包括：
- * - 角色加载/更新/卸载
- * - 聊天历史加载
  * - 消息发送/接收
- * - 工具执行
+ * - 流式消息增量
+ * - 工具执行状态
  * - 上下文构建
  * - 错误处理
  * - Token 统计
@@ -20,34 +18,33 @@ import { devLog } from '@/utils/logger';
 import type {
   CharacterLoadedPayload,
   ChatHistoryLoadedPayload,
+  MessageReasoningDeltaPayload,
   MessageSentPayload,
   MessageReceivedPayload,
+  MessageStreamDeltaPayload,
   ContextBuiltPayload,
   CharacterUpdatedPayload,
+  ToolExecutionStatusPayload,
   ToolExecutedPayload,
   SessionUnloadedPayload,
   ErrorPayload,
   TokenStatsPayload,
-  ProgressPayload
+  ProgressPayload,
 } from '@/types/events';
 import type { ChatMessage } from '@/types/api';
 
-/**
- * 前端显示消息类型
- */
 export interface DisplayMessage extends Omit<ChatMessage, 'timestamp'> {
   id: string;
   timestamp: Date;
   isEditing?: boolean;
+  isStreaming?: boolean;
+  reasoningContent?: string;
+  reasoningExpanded?: boolean;
+  isReasoningStreaming?: boolean;
+  streamTargetId?: string;
+  transientKind?: 'stream-assistant' | 'tool-call-carrier' | 'tool-status';
 }
 
-/**
- * 使用 AI 事件监听器
- *
- * @param messages - 消息列表响应式引用
- * @param contextBuiltInfo - 上下文构建信息响应式引用
- * @param isLoadingFromBackend - 后端加载状态响应式引用
- */
 export function useAiEventListeners(
   messages: Ref<DisplayMessage[]>,
   contextBuiltInfo: Ref<any>,
@@ -56,14 +53,155 @@ export function useAiEventListeners(
   const aiStore = useAiStore();
   const chatStore = useChatStore();
   const eventUnlisteners = ref<(() => void)[]>([]);
+  let activeAssistantTargetId: string | null = null;
 
-  /**
-   * 初始化所有后端事件监听器
-   */
+  function toDisplayMessage(message: ChatMessage, fallbackId: string): DisplayMessage {
+    return {
+      id: fallbackId,
+      role: message.role,
+      content: message.content,
+      timestamp: new Date(message.timestamp || Date.now()),
+      tool_calls: message.tool_calls,
+      tool_call_id: message.tool_call_id,
+      name: message.name,
+    };
+  }
+
+  function removeTransientMessages(targetMessageId: string) {
+    messages.value = messages.value.filter((message) => message.streamTargetId !== targetMessageId);
+  }
+
+  function clearReasoningState(message: DisplayMessage) {
+    delete message.reasoningContent;
+    delete message.reasoningExpanded;
+    delete message.isReasoningStreaming;
+  }
+
+  function clearPreviousReasoning(targetMessageId: string) {
+    messages.value.forEach((message) => {
+      const messageTargetId = message.streamTargetId ?? message.id;
+
+      if (messageTargetId !== targetMessageId) {
+        clearReasoningState(message);
+      }
+    });
+  }
+
+  function beginAssistantTurn(targetMessageId: string) {
+    if (activeAssistantTargetId === targetMessageId) {
+      return;
+    }
+
+    clearPreviousReasoning(targetMessageId);
+    activeAssistantTargetId = targetMessageId;
+  }
+
+  function findStreamingAssistantMessage(targetMessageId: string) {
+    return messages.value.find(
+      (message) => message.streamTargetId === targetMessageId && message.transientKind === 'stream-assistant',
+    );
+  }
+
+  function ensureStreamingAssistantMessage(targetMessageId: string, timestamp: number): DisplayMessage {
+    const existingMessage = findStreamingAssistantMessage(targetMessageId);
+
+    if (existingMessage) {
+      return existingMessage;
+    }
+
+    const nextMessage: DisplayMessage = {
+      id: targetMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(timestamp),
+      isStreaming: true,
+      streamTargetId: targetMessageId,
+      transientKind: 'stream-assistant',
+    };
+
+    messages.value.push(nextMessage);
+    return nextMessage;
+  }
+
+  function ensureToolCarrierMessage(payload: ToolExecutionStatusPayload): DisplayMessage {
+    let carrier = messages.value.find(
+      (message) => message.streamTargetId === payload.target_message_id && message.transientKind === 'tool-call-carrier',
+    );
+
+    if (!carrier) {
+      carrier = {
+        id: `tool-carrier_${payload.target_message_id}`,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(payload.timestamp),
+        tool_calls: [],
+        streamTargetId: payload.target_message_id,
+        transientKind: 'tool-call-carrier',
+      };
+      messages.value.push(carrier);
+    }
+
+    if (payload.tool_call) {
+      const toolCalls = carrier.tool_calls ?? [];
+      if (!toolCalls.some((toolCall) => toolCall.id === payload.tool_call_id)) {
+        toolCalls.push(payload.tool_call);
+        carrier.tool_calls = toolCalls;
+      }
+    }
+
+    return carrier;
+  }
+
+  function upsertToolStatusMessage(payload: ToolExecutionStatusPayload) {
+    const content = JSON.stringify(
+      {
+        phase: payload.phase,
+        tool_name: payload.tool_name,
+        result: payload.result,
+        error: payload.error,
+        execution_time_ms: payload.execution_time_ms,
+      },
+      null,
+      2,
+    );
+
+    const nextMessage: DisplayMessage = {
+      id: `tool-status_${payload.tool_call_id}`,
+      role: 'tool',
+      content,
+      timestamp: new Date(payload.timestamp),
+      name: payload.tool_name,
+      tool_call_id: payload.tool_call_id,
+      streamTargetId: payload.target_message_id,
+      transientKind: 'tool-status',
+    };
+
+    const existingIndex = messages.value.findIndex(
+      (message) => message.streamTargetId === payload.target_message_id && message.tool_call_id === payload.tool_call_id,
+    );
+
+    if (existingIndex >= 0) {
+      messages.value[existingIndex] = {
+        ...messages.value[existingIndex],
+        ...nextMessage,
+      };
+      return;
+    }
+
+    const carrierIndex = messages.value.findIndex(
+      (message) => message.streamTargetId === payload.target_message_id && message.transientKind === 'tool-call-carrier',
+    );
+
+    if (carrierIndex >= 0) {
+      messages.value.splice(carrierIndex + 1, 0, nextMessage);
+    } else {
+      messages.value.push(nextMessage);
+    }
+  }
+
   async function setupListeners() {
     devLog('初始化后端事件监听器...');
 
-    // 角色加载事件
     const unlistenCharacterLoaded = await listen<CharacterLoadedPayload>('character-loaded', (event) => {
       devLog('🎭 角色加载事件:', event.payload);
       const payload = event.payload;
@@ -71,12 +209,11 @@ export function useAiEventListeners(
       isLoadingFromBackend.value = false;
     });
 
-    // 聊天历史加载事件
     const unlistenChatHistoryLoaded = await listen<ChatHistoryLoadedPayload>('chat-history-loaded', (event) => {
       devLog('📚 聊天历史加载事件:', event.payload);
       const payload = event.payload;
+      activeAssistantTargetId = null;
 
-      // 转换为前端消息格式
       messages.value = payload.chat_history.map((msg, index) => ({
         id: `${msg.timestamp || index}_${payload.uuid}`,
         role: msg.role,
@@ -87,82 +224,144 @@ export function useAiEventListeners(
         name: msg.name,
       }));
 
-      // 同步到 store
       chatStore.setChatHistory(payload.uuid, payload.chat_history);
       chatStore.setActiveCharacter(payload.uuid);
 
       devLog(`从后端加载了 ${messages.value.length} 条聊天历史记录`);
     });
 
-    // 消息发送事件
     const unlistenMessageSent = await listen<MessageSentPayload>('message-sent', (event) => {
       devLog('📤 消息发送事件:', event.payload);
       const payload = event.payload;
 
-      // 如果消息不在前端列表中，添加它
-      const existingMessage = messages.value.find(msg =>
-        msg.content === payload.message.content && msg.role === 'user'
+      const existingMessage = messages.value.find(
+        (message) => message.content === payload.message.content && message.role === 'user',
       );
 
       if (!existingMessage) {
-        const userMessageObj = {
+        messages.value.push({
           id: `${payload.message.timestamp}_sent_${payload.uuid}`,
-          role: 'user' as const,
+          role: 'user',
           content: payload.message.content,
           timestamp: new Date(payload.message.timestamp || Date.now()),
-        };
-        messages.value.push(userMessageObj);
+        });
       }
     });
 
-    // 消息接收事件
+    const unlistenMessageStreamDelta = await listen<MessageStreamDeltaPayload>('message-stream-delta', (event) => {
+      const payload = event.payload;
+
+      if (payload.role !== 'assistant') {
+        return;
+      }
+
+      if (payload.is_aborted) {
+        removeTransientMessages(payload.target_message_id);
+        if (activeAssistantTargetId === payload.target_message_id) {
+          activeAssistantTargetId = null;
+        }
+        return;
+      }
+
+      beginAssistantTurn(payload.target_message_id);
+
+      const existingMessage = ensureStreamingAssistantMessage(payload.target_message_id, payload.timestamp);
+
+      existingMessage.content += payload.delta;
+      existingMessage.timestamp = new Date(payload.timestamp);
+      existingMessage.isStreaming = !payload.is_finished;
+    });
+
+    const unlistenMessageReasoningDelta = await listen<MessageReasoningDeltaPayload>('message-reasoning-delta', (event) => {
+      const payload = event.payload;
+
+      if (payload.is_aborted) {
+        const targetMessage = messages.value.find((message) => message.id === payload.target_message_id);
+
+        if (targetMessage) {
+          clearReasoningState(targetMessage);
+        }
+
+        const transientMessage = findStreamingAssistantMessage(payload.target_message_id);
+        if (transientMessage) {
+          clearReasoningState(transientMessage);
+        }
+
+        if (activeAssistantTargetId === payload.target_message_id) {
+          activeAssistantTargetId = null;
+        }
+
+        return;
+      }
+
+      beginAssistantTurn(payload.target_message_id);
+
+      const targetMessage = ensureStreamingAssistantMessage(payload.target_message_id, payload.timestamp);
+      targetMessage.reasoningContent = `${targetMessage.reasoningContent ?? ''}${payload.delta}`;
+      targetMessage.timestamp = new Date(payload.timestamp);
+      targetMessage.isReasoningStreaming = !payload.is_finished;
+
+      if (targetMessage.reasoningExpanded === undefined) {
+        targetMessage.reasoningExpanded = false;
+      }
+    });
+
     const unlistenMessageReceived = await listen<MessageReceivedPayload>('message-received', (event) => {
       devLog('📥 消息接收事件:', event.payload);
       const payload = event.payload;
 
-      // 如果有中间消息（工具调用流程），先插入它们
+      const transientMessage = payload.target_message_id
+        ? findStreamingAssistantMessage(payload.target_message_id)
+        : undefined;
+
+      if (payload.target_message_id) {
+        removeTransientMessages(payload.target_message_id);
+
+        if (activeAssistantTargetId === payload.target_message_id) {
+          activeAssistantTargetId = payload.target_message_id;
+        }
+      }
+
       if (payload.intermediate_messages && payload.intermediate_messages.length > 0) {
         devLog(`🔄 插入 ${payload.intermediate_messages.length} 条中间消息（tool 调用流程）`);
 
-        const intermediateDisplayMessages = payload.intermediate_messages.map((msg, index) => ({
-          id: `${msg.timestamp || Date.now()}_intermediate_${index}_${payload.uuid}`,
-          role: msg.role,
-          content: msg.content,
-          timestamp: new Date(msg.timestamp || Date.now()),
-          tool_calls: msg.tool_calls,
-          tool_call_id: msg.tool_call_id,
-          name: msg.name,
-        }));
+        const intermediateDisplayMessages = payload.intermediate_messages.map((msg, index) =>
+          toDisplayMessage(msg, `${msg.timestamp || Date.now()}_intermediate_${index}_${payload.uuid}`),
+        );
 
         messages.value.push(...intermediateDisplayMessages);
       }
 
-      // 添加最终的 AI 回复消息
-      const aiMessageObj: DisplayMessage = {
-        id: `${payload.message.timestamp}_received_${payload.uuid}`,
-        role: 'assistant',
-        content: payload.message.content,
-        timestamp: new Date(payload.message.timestamp || Date.now()),
-        tool_calls: payload.message.tool_calls,
-        tool_call_id: payload.message.tool_call_id,
-        name: payload.message.name,
-      };
-      messages.value.push(aiMessageObj);
+      const finalMessage = toDisplayMessage(
+        payload.message,
+        payload.target_message_id || `${payload.message.timestamp}_received_${payload.uuid}`,
+      );
+
+      if (transientMessage?.reasoningContent) {
+        finalMessage.reasoningContent = transientMessage.reasoningContent;
+        finalMessage.reasoningExpanded = transientMessage.reasoningExpanded ?? false;
+        finalMessage.isReasoningStreaming = false;
+      }
+
+      messages.value.push(finalMessage);
     });
 
-    // 上下文构建完成事件
     const unlistenContextBuilt = await listen<ContextBuiltPayload>('context-built', (event) => {
       devLog('🔧 上下文构建完成事件:', event.payload);
       const payload = event.payload;
       contextBuiltInfo.value = payload.context_result;
     });
 
-    // 角色更新事件
     const unlistenCharacterUpdated = await listen<CharacterUpdatedPayload>('character-updated', (event) => {
       devLog('🔄 角色更新事件:', event.payload);
     });
 
-    // 工具执行事件
+    const unlistenToolExecutionStatus = await listen<ToolExecutionStatusPayload>('tool-execution-status', (event) => {
+      const payload = event.payload;
+      ensureToolCarrierMessage(payload);
+      upsertToolStatusMessage(payload);
+    });
+
     const unlistenToolExecuted = await listen<ToolExecutedPayload>('tool-executed', (event) => {
       const payload = event.payload;
 
@@ -170,63 +369,60 @@ export function useAiEventListeners(
         devLog('✅ 工具执行成功:', {
           工具名称: payload.tool_name,
           执行时间: `${payload.execution_time_ms}ms`,
-          结果: payload.result
+          结果: payload.result,
         });
       } else {
         console.error('❌ 工具执行失败:', {
           工具名称: payload.tool_name,
           错误: payload.error,
-          执行时间: `${payload.execution_time_ms}ms`
+          执行时间: `${payload.execution_time_ms}ms`,
         });
       }
     });
 
-    // 会话卸载事件
     const unlistenSessionUnloaded = await listen<SessionUnloadedPayload>('session-unloaded', (event) => {
       devLog('🚪 会话卸载事件:', event.payload);
       const payload = event.payload;
 
       if (payload.uuid === aiStore.currentSessionUUID) {
+        activeAssistantTargetId = null;
         aiStore.clearSessionState();
         messages.value = [];
         contextBuiltInfo.value = null;
       }
     });
 
-    // 错误事件
     const unlistenError = await listen<ErrorPayload>('error', (event) => {
       console.error('❌ 错误事件:', event.payload);
       const payload = event.payload;
 
-      const errorMessageObj = {
+      messages.value.push({
         id: `error_${payload.timestamp}_${payload.uuid || 'unknown'}`,
-        role: 'assistant' as const,
+        role: 'assistant',
         content: `⚠️ 系统错误 [${payload.error_code}]: ${payload.error_message}`,
         timestamp: new Date(payload.timestamp),
-      };
-
-      messages.value.push(errorMessageObj);
+      });
     });
 
-    // Token统计事件
     const unlistenTokenStats = await listen<TokenStatsPayload>('token-stats', (event) => {
       devLog('📊 Token统计事件:', event.payload);
       aiStore.updateTokenStats(event.payload.token_usage);
     });
 
-    // 进度事件
     const unlistenProgress = await listen<ProgressPayload>('progress', (event) => {
       devLog('📈 进度事件:', event.payload);
     });
 
-    // 保存所有清理函数
     eventUnlisteners.value.push(
       unlistenCharacterLoaded,
       unlistenChatHistoryLoaded,
       unlistenMessageSent,
+      unlistenMessageStreamDelta,
+      unlistenMessageReasoningDelta,
       unlistenMessageReceived,
       unlistenContextBuilt,
       unlistenCharacterUpdated,
+      unlistenToolExecutionStatus,
       unlistenToolExecuted,
       unlistenSessionUnloaded,
       unlistenError,
@@ -237,12 +433,9 @@ export function useAiEventListeners(
     devLog('✅ 后端事件监听器初始化完成');
   }
 
-  /**
-   * 清理所有事件监听器
-   */
   function cleanup() {
     devLog('清理事件监听器...');
-    eventUnlisteners.value.forEach(unlisten => {
+    eventUnlisteners.value.forEach((unlisten) => {
       try {
         unlisten();
       } catch (error) {
@@ -255,6 +448,6 @@ export function useAiEventListeners(
 
   return {
     setupListeners,
-    cleanup
+    cleanup,
   };
 }

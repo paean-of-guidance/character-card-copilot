@@ -36,10 +36,7 @@ impl TokenCounter {
 
     /// 批量计算多个文本的 Token 数量
     pub fn count_tokens_batch(&self, texts: &[String]) -> Vec<TokenCountResult> {
-        texts
-            .iter()
-            .map(|text| self.count_tokens(text))
-            .collect()
+        texts.iter().map(|text| self.count_tokens(text)).collect()
     }
 
     /// 检查文本是否超出 Token 限制

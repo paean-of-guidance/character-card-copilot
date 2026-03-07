@@ -23,4 +23,3 @@ pub async fn truncate_to_token_limit(text: String, limit: usize) -> Result<Strin
     let counter = get_token_counter();
     Ok(counter.truncate_to_limit(&text, limit))
 }
-

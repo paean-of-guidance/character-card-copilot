@@ -5,10 +5,12 @@
 export interface ApiConfig {
   /** 配置名称 */
   profile: string;
-  /** API链接端点 */
-  endpoint: string;
+  /** Provider 类型 */
+  provider: ApiProvider;
+  /** API Base URL */
+  base_url: string;
   /** API密钥 */
-  key: string;
+  api_key: string;
   /** 使用的模型 */
   model: string;
   /** 是否为默认配置 */
@@ -17,14 +19,21 @@ export interface ApiConfig {
   enabled: boolean;
 }
 
+export type ApiProvider =
+  | 'open_ai_compatible'
+  | 'open_ai_responses'
+  | 'claude'
+  | 'gemini_v1_beta'
+
 export interface ApiListResponse {
   apis: ApiConfig[];
 }
 
 export interface CreateApiRequest {
   profile: string;
-  endpoint?: string;
-  key?: string;
+  provider?: ApiProvider;
+  base_url?: string;
+  api_key?: string;
   model?: string;
   default?: boolean;
   enabled?: boolean;

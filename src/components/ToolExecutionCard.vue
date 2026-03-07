@@ -78,7 +78,9 @@
             <div
                 :class="[
                     'flex items-center gap-2 cursor-pointer rounded-md p-2 transition-colors duration-200 select-none focus-visible:ring-2 focus-visible:outline-none',
-                    isResultSuccess(result)
+                    getResultPhase(result) === 'started'
+                        ? 'hover:bg-amber-50 focus-visible:ring-amber-400'
+                        : isResultSuccess(result)
                         ? 'hover:bg-green-50 focus-visible:ring-green-400'
                         : 'hover:bg-red-50 focus-visible:ring-red-400',
                 ]"
@@ -90,8 +92,13 @@
                 @keydown.enter="toggleResult(index)"
                 @keydown.space.prevent="toggleResult(index)"
             >
+                <MdBuild
+                    v-if="getResultPhase(result) === 'started'"
+                    class="w-5 h-5 text-amber-600 shrink-0"
+                    aria-hidden="true"
+                />
                 <MdCheckCircle
-                    v-if="isResultSuccess(result)"
+                    v-else-if="isResultSuccess(result)"
                     class="w-5 h-5 text-green-600 shrink-0"
                     aria-hidden="true"
                 />
@@ -102,7 +109,9 @@
                 />
                 <span class="font-medium text-sm text-gray-800 flex-1">
                     {{
-                        isResultSuccess(result)
+                        getResultPhase(result) === "started"
+                            ? "工具执行中"
+                            : isResultSuccess(result)
                             ? "工具执行成功"
                             : "工具执行失败"
                     }}
@@ -121,7 +130,9 @@
                 v-show="expandedResults[index]"
                 :class="[
                     'mt-2 border-t rounded-md p-3 max-h-48 overflow-auto transition-all duration-300 ease-in-out',
-                    isResultSuccess(result)
+                    getResultPhase(result) === 'started'
+                        ? 'bg-amber-50 border-amber-200'
+                        : isResultSuccess(result)
                         ? 'bg-green-50 border-green-200'
                         : 'bg-red-50 border-red-200',
                 ]"
@@ -249,9 +260,28 @@ function isResultSuccess(result: ToolResult): boolean {
     const content = result.content.toLowerCase();
     return (
         !content.includes("error") &&
+        !content.includes('"phase": "failed"') &&
         !content.includes("failed") &&
+        !content.includes('"phase": "started"') &&
         !content.includes("exception")
     );
+}
+
+function getResultPhase(result: ToolResult): 'started' | 'succeeded' | 'failed' {
+    try {
+        const parsed = JSON.parse(result.content) as { phase?: string };
+        if (
+            parsed.phase === 'started' ||
+            parsed.phase === 'succeeded' ||
+            parsed.phase === 'failed'
+        ) {
+            return parsed.phase;
+        }
+    } catch {
+        return isResultSuccess(result) ? 'succeeded' : 'failed';
+    }
+
+    return isResultSuccess(result) ? 'succeeded' : 'failed';
 }
 
 /**

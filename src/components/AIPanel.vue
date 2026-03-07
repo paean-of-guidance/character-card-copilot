@@ -101,6 +101,9 @@ let commandRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 使用消息分组 composable
 const groupedMessages = useMessageGrouping(messages);
+const hasStreamingAssistant = computed(() =>
+    messages.value.some((message) => message.role === 'assistant' && message.isStreaming),
+);
 
 // 切换显示/隐藏
 function togglePanel() {
@@ -355,6 +358,15 @@ function handleCancelEdit(messageId: string) {
         messages.value[index].isEditing = false;
     }
     editingContent.value = "";
+}
+
+function handleToggleReasoning(messageId: string) {
+    const message = messages.value.find((item) => item.id === messageId);
+    if (!message) {
+        return;
+    }
+
+    message.reasoningExpanded = !message.reasoningExpanded;
 }
 
 // 保存编辑（从 MessageBubble 触发）
@@ -934,9 +946,12 @@ onUnmounted(() => {
                             :message-id="group.message.id"
                             :role="group.message.role as 'user' | 'assistant'"
                             :content="group.message.content"
+                            :reasoning-content="group.message.reasoningContent"
+                            :reasoning-expanded="group.message.reasoningExpanded || false"
+                            :reasoning-loading="group.message.isReasoningStreaming || false"
                             :timestamp="group.message.timestamp"
                             :is-editing="group.message.isEditing"
-                            :loading="aiStore.isLoading"
+                            :loading="group.message.isStreaming || false"
                             :is-last-message="
                                 groupIndex === groupedMessages.length - 1
                             "
@@ -948,11 +963,12 @@ onUnmounted(() => {
                             "
                             @cancel-edit="handleCancelEdit(group.message.id)"
                             @delete="handleDeleteMessage(group.message.id)"
+                            @toggle-reasoning="handleToggleReasoning(group.message.id)"
                         />
                     </div>
 
                     <!-- 加载中指示器 -->
-                    <div v-if="aiStore.isLoading" class="flex justify-start">
+                    <div v-if="aiStore.isLoading && !hasStreamingAssistant" class="flex justify-start">
                         <div
                             class="bg-white border border-gray-200 rounded-lg rounded-bl-sm px-4 py-2"
                         >

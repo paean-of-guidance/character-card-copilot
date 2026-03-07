@@ -46,8 +46,8 @@ const displayModels = computed(() => {
 })
 
 async function loadModels() {
-  if (!props.apiConfig.endpoint || !props.apiConfig.key) {
-    error.value = '请先填写端点和 API 密钥'
+  if (!props.apiConfig.base_url || !props.apiConfig.api_key) {
+    error.value = '请先填写 Base URL 和 API 密钥'
     return
   }
 
@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="absolute right-3 rounded-full p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="loading || !apiConfig.endpoint || !apiConfig.key"
+        :disabled="loading || !apiConfig.base_url || !apiConfig.api_key"
         title="刷新模型列表"
         @click="loadModels"
       >

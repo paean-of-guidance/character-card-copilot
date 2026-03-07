@@ -1,3 +1,4 @@
+use crate::ai_chat::{MessageRole, ToolCallData};
 use crate::backend::domain::sessions::session::SessionInfo;
 use crate::character_storage::CharacterData;
 use crate::chat_history::ChatMessage;
@@ -34,10 +35,69 @@ pub struct MessageSentPayload {
 pub struct MessageReceivedPayload {
     pub uuid: String,
     pub message: ChatMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_message_id: Option<String>,
     pub timestamp: i64,
     /// 中间消息（包括 assistant with tool_calls 和 tool results）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intermediate_messages: Option<Vec<ChatMessage>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolExecutionPhase {
+    Started,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageStreamDeltaPayload {
+    pub uuid: String,
+    pub role: MessageRole,
+    pub target_message_id: String,
+    pub delta: String,
+    pub is_finished: bool,
+    #[serde(default)]
+    pub is_aborted: bool,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningDeltaKind {
+    Reasoning,
+    ThoughtSignature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageReasoningDeltaPayload {
+    pub uuid: String,
+    pub target_message_id: String,
+    pub delta: String,
+    pub kind: ReasoningDeltaKind,
+    pub is_finished: bool,
+    #[serde(default)]
+    pub is_aborted: bool,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolExecutionStatusPayload {
+    pub uuid: String,
+    pub target_message_id: String,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub phase: ToolExecutionPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call: Option<ToolCallData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_time_ms: Option<u64>,
+    pub timestamp: i64,
 }
 
 /// 上下文构建完成事件载荷
@@ -125,4 +185,3 @@ pub struct TokenUsageStats {
     pub context_tokens: usize,
     pub budget_utilization: f64, // 预算使用百分比
 }
-
