@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, onBeforeUnmount } from "vue";
+import {  onMounted, ref, watch, onBeforeUnmount } from "vue";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { CharacterData } from "@/types/character";
 

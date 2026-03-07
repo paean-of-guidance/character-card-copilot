@@ -1,48 +1,137 @@
+import { computed, readonly, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed, readonly } from 'vue'
-import type { ApiConfig, CreateApiRequest, UpdateApiRequest, ApiTestResult, ModelInfo } from '@/types/api'
-import * as apiConfig from '@/services/apiConfig'
+import type {
+  ApiConfig,
+  ApiTestResult,
+  CreateApiRequest,
+  ModelInfo,
+  UpdateApiRequest,
+} from '@/types/api'
+import * as apiConfigService from '@/services/apiConfig'
+
+const CACHE_DURATION = 5 * 60 * 1000
+
+function cloneApi(config: ApiConfig): ApiConfig {
+  return { ...config }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
+}
 
 export const useApiStore = defineStore('api', () => {
-  // ===== 状态 =====
   const apis = ref<ApiConfig[]>([])
   const loading = ref(false)
   const lastFetch = ref(0)
-  const CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
 
-  // ===== 计算属性 =====
+  const selectedProfile = ref('')
+  const draft = ref<ApiConfig | null>(null)
+  const saving = ref(false)
+  const saveError = ref('')
+  const testing = ref(false)
+  const lastTestResult = ref<ApiTestResult | null>(null)
+
   const defaultApi = computed(() => {
-    return apis.value.find(api => api.default) || null
+    return apis.value.find((api) => api.default) ?? null
   })
 
   const enabledApis = computed(() => {
-    return apis.value.filter(api => api.enabled)
+    return apis.value.filter((api) => api.enabled)
   })
 
   const disabledApis = computed(() => {
-    return apis.value.filter(api => !api.enabled)
+    return apis.value.filter((api) => !api.enabled)
   })
 
   const isCacheValid = computed(() => {
     return Date.now() - lastFetch.value < CACHE_DURATION
   })
 
-  // ===== 动作 =====
+  const selectedApi = computed(() => {
+    if (!selectedProfile.value) {
+      return null
+    }
 
-  /**
-   * 加载所有API配置
-   */
-  async function loadAllApis(force = false) {
-    // 如果缓存有效且不是强制刷新，则跳过
-    if (!force && isCacheValid.value && apis.value.length > 0) {
+    return apis.value.find((api) => api.profile === selectedProfile.value) ?? null
+  })
+
+  const dirty = computed(() => {
+    if (!selectedApi.value || !draft.value) {
+      return false
+    }
+
+    return JSON.stringify(selectedApi.value) !== JSON.stringify(draft.value)
+  })
+
+  function clearDraftState() {
+    draft.value = null
+    saveError.value = ''
+    lastTestResult.value = null
+  }
+
+  function syncDraftFromSelection() {
+    if (!selectedApi.value) {
+      clearDraftState()
       return
+    }
+
+    draft.value = cloneApi(selectedApi.value)
+    saveError.value = ''
+    lastTestResult.value = null
+  }
+
+  function selectApi(profile: string | null) {
+    selectedProfile.value = profile ?? ''
+    syncDraftFromSelection()
+  }
+
+  function clearSelection() {
+    selectedProfile.value = ''
+    clearDraftState()
+  }
+
+  function patchDraft(patch: Partial<ApiConfig>) {
+    if (!draft.value) {
+      return
+    }
+
+    draft.value = {
+      ...draft.value,
+      ...patch,
+    }
+
+    saveError.value = ''
+    lastTestResult.value = null
+  }
+
+  function discardDraft() {
+    syncDraftFromSelection()
+  }
+
+  async function loadAllApis(force = false) {
+    if (!force && isCacheValid.value && apis.value.length > 0) {
+      return apis.value
     }
 
     loading.value = true
     try {
-      const data = await apiConfig.getAllApiConfigs()
-      apis.value = data
+      apis.value = await apiConfigService.getAllApiConfigs()
       lastFetch.value = Date.now()
+
+      if (selectedProfile.value) {
+        const exists = apis.value.some((api) => api.profile === selectedProfile.value)
+        if (!exists) {
+          clearSelection()
+        } else if (!dirty.value) {
+          syncDraftFromSelection()
+        }
+      }
+
+      return apis.value
     } catch (error) {
       console.error('加载API配置失败:', error)
       throw error
@@ -51,193 +140,194 @@ export const useApiStore = defineStore('api', () => {
     }
   }
 
-  /**
-   * 刷新API配置（强制重新加载）
-   */
   async function refreshApis() {
-    return loadAllApis(true)
+    return await loadAllApis(true)
   }
 
-  /**
-   * 根据配置名称获取API配置
-   */
   async function getApiByProfile(profile: string): Promise<ApiConfig | undefined> {
-    // 先尝试从缓存中获取
-    let api = apis.value.find(a => a.profile === profile)
-    if (!api) {
-      // 缓存中没有，从后端获取
-      const foundApi = await apiConfig.getApiConfigByProfile(profile)
-      if (foundApi) {
-        apis.value.push(foundApi)
-        api = foundApi
-      }
+    const cached = apis.value.find((api) => api.profile === profile)
+    if (cached) {
+      return cached
     }
-    return api
+
+    const remote = await apiConfigService.getApiConfigByProfile(profile)
+    if (!remote) {
+      return undefined
+    }
+
+    apis.value.push(remote)
+    return remote
   }
 
-  /**
-   * 获取默认API配置
-   */
   async function getDefaultApi(): Promise<ApiConfig | undefined> {
-    // 先尝试从缓存中获取
     if (defaultApi.value) {
       return defaultApi.value
     }
 
-    // 缓存中没有，从后端获取
-    const api = await apiConfig.getDefaultApiConfig()
-    if (api) {
-      // 更新缓存
-      const index = apis.value.findIndex(a => a.profile === api.profile)
-      if (index >= 0) {
-        apis.value[index] = api
-      } else {
-        apis.value.push(api)
-      }
-      return api
+    const remote = await apiConfigService.getDefaultApiConfig()
+    if (!remote) {
+      return undefined
     }
-    return undefined
+
+    await refreshApis()
+    return apis.value.find((api) => api.profile === remote.profile)
   }
 
-  /**
-   * 创建新的API配置
-   */
   async function createApi(config: CreateApiRequest) {
-    const newApi = await apiConfig.createApiConfig(config)
-    apis.value.push(newApi)
-    lastFetch.value = Date.now()
-    return newApi
+    const created = await apiConfigService.createApiConfig(config)
+    await refreshApis()
+    selectApi(created.profile)
+    return created
   }
 
-  /**
-   * 更新API配置
-   */
   async function updateApi(config: UpdateApiRequest) {
-    await apiConfig.updateApiConfig(config)
+    await apiConfigService.updateApiConfig(config)
+    await refreshApis()
 
-    // 更新缓存中的数据
-    const index = apis.value.findIndex(api => api.profile === config.original_profile)
-    if (index >= 0) {
-      apis.value[index] = {
-        ...apis.value[index],
-        ...config,
-        profile: config.profile // 使用新的profile名称
-      }
+    if (selectedProfile.value === config.original_profile || selectedProfile.value === config.profile) {
+      selectApi(config.profile)
     }
-    lastFetch.value = Date.now()
   }
 
-  /**
-   * 删除API配置
-   */
+  async function saveDraft() {
+    if (!draft.value || !selectedApi.value) {
+      throw new Error('当前没有可保存的API配置')
+    }
+
+    saving.value = true
+    saveError.value = ''
+
+    try {
+      const request: UpdateApiRequest = {
+        profile: draft.value.profile,
+        original_profile: selectedApi.value.profile,
+        endpoint: draft.value.endpoint,
+        key: draft.value.key,
+        model: draft.value.model,
+        default: draft.value.default,
+        enabled: draft.value.enabled,
+      }
+
+      await updateApi(request)
+      syncDraftFromSelection()
+      return selectedApi.value
+    } catch (error) {
+      saveError.value = getErrorMessage(error)
+      throw error
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function deleteApi(profile: string) {
-    await apiConfig.deleteApiConfig(profile)
-    apis.value = apis.value.filter(api => api.profile !== profile)
-    lastFetch.value = Date.now()
+    await apiConfigService.deleteApiConfig(profile)
+    await refreshApis()
+
+    if (selectedProfile.value === profile) {
+      clearSelection()
+    }
   }
 
-  /**
-   * 复制API配置
-   */
   async function copyApi(profile: string) {
     const originalApi = await getApiByProfile(profile)
     if (!originalApi) {
       throw new Error(`API配置 ${profile} 不存在`)
     }
 
-    const copyConfig: CreateApiRequest = {
-      profile: `${originalApi.profile} (copy)`,
-      endpoint: originalApi.endpoint,
-      key: originalApi.key,
-      model: originalApi.model,
-      default: false,
-      enabled: originalApi.enabled,
-    }
-
-    const newApi = await createApi(copyConfig)
-    return newApi
+    const created = await apiConfigService.copyApiConfig(originalApi)
+    await refreshApis()
+    selectApi(created.profile)
+    return created
   }
 
-  /**
-   * 设置默认API配置
-   */
   async function setDefaultApi(profile: string) {
-    await apiConfig.setDefaultApiConfig(profile)
+    await apiConfigService.setDefaultApiConfig(profile)
+    await refreshApis()
 
-    // 更新本地状态
-    apis.value.forEach(api => {
-      api.default = api.profile === profile
-    })
-    lastFetch.value = Date.now()
-  }
-
-  /**
-   * 启用/禁用API配置
-   */
-  async function toggleApi(profile: string, enabled: boolean) {
-    await apiConfig.toggleApiConfig(profile, enabled)
-
-    // 更新本地状态
-    const api = apis.value.find(a => a.profile === profile)
-    if (api) {
-      api.enabled = enabled
+    if (selectedProfile.value === profile) {
+      syncDraftFromSelection()
     }
-    lastFetch.value = Date.now()
   }
 
-  /**
-   * 测试API连接
-   */
+  async function toggleApi(profile: string, enabled: boolean) {
+    await apiConfigService.toggleApiConfig(profile, enabled)
+    await refreshApis()
+
+    if (selectedProfile.value === profile) {
+      syncDraftFromSelection()
+    }
+  }
+
+  async function testDraft() {
+    if (!draft.value) {
+      throw new Error('当前没有可测试的API配置')
+    }
+
+    testing.value = true
+    saveError.value = ''
+
+    try {
+      lastTestResult.value = await apiConfigService.testApiConnection(draft.value)
+      return lastTestResult.value
+    } finally {
+      testing.value = false
+    }
+  }
+
   async function testConnection(config: ApiConfig): Promise<ApiTestResult> {
-    return await apiConfig.testApiConnection(config)
+    return await apiConfigService.testApiConnection(config)
   }
 
-  /**
-   * 获取可用模型列表
-   */
   async function fetchModels(config: ApiConfig): Promise<ModelInfo[]> {
-    return await apiConfig.fetchModels(config)
+    return await apiConfigService.fetchModels(config)
   }
 
-  /**
-   * 清除缓存
-   */
   function clearCache() {
     lastFetch.value = 0
   }
 
-  /**
-   * 重置状态
-   */
   function reset() {
     apis.value = []
     loading.value = false
     lastFetch.value = 0
+    selectedProfile.value = ''
+    clearDraftState()
+    saving.value = false
+    testing.value = false
   }
 
   return {
-    // 状态
     apis: readonly(apis),
     loading: readonly(loading),
     lastFetch: readonly(lastFetch),
-
-    // 计算属性
+    selectedProfile: readonly(selectedProfile),
+    selectedApi,
+    draft: readonly(draft),
+    saving: readonly(saving),
+    saveError: readonly(saveError),
+    testing: readonly(testing),
+    lastTestResult: readonly(lastTestResult),
+    dirty,
     defaultApi,
     enabledApis,
     disabledApis,
     isCacheValid,
-
-    // 动作
     loadAllApis,
     refreshApis,
     getApiByProfile,
     getDefaultApi,
     createApi,
     updateApi,
+    saveDraft,
     deleteApi,
     copyApi,
     setDefaultApi,
     toggleApi,
+    selectApi,
+    clearSelection,
+    patchDraft,
+    discardDraft,
+    testDraft,
     testConnection,
     fetchModels,
     clearCache,

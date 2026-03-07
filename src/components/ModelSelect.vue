@@ -1,310 +1,158 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import type { ApiConfig, ModelInfo } from '@/types/api';
-import { fetchModels } from '@/services/apiConfig';
-import { MdRefresh } from 'vue-icons-plus/md';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { MdRefresh } from 'vue-icons-plus/md'
+import type { ApiConfig, ModelInfo } from '@/types/api'
+import { useApiStore } from '@/stores/api'
 
 const props = defineProps<{
-  apiConfig: ApiConfig;
-  modelValue?: string;
-}>();
+  apiConfig: ApiConfig
+  modelValue?: string
+}>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string];
-}>();
+  'update:modelValue': [value: string]
+}>()
 
-const models = ref<ModelInfo[]>([]);
-const loading = ref(false);
-const error = ref('');
-const isOpen = ref(false);
-const searchQuery = ref('');
+const apiStore = useApiStore()
+
+const rootRef = ref<HTMLElement | null>(null)
+const models = ref<ModelInfo[]>([])
+const loading = ref(false)
+const error = ref('')
+const isOpen = ref(false)
+const searchQuery = ref('')
 
 const selectedModel = computed({
-  get: () => props.modelValue || '',
-  set: (value: string) => emit('update:modelValue', value)
-});
+  get: () => props.modelValue ?? '',
+  set: (value: string) => emit('update:modelValue', value),
+})
 
 const displayModels = computed(() => {
-  let modelList = models.value;
+  let modelList = models.value
 
-  // 如果当前选中的模型不在列表中，添加到列表开头
-  if (props.modelValue && !models.value.some(m => m.id === props.modelValue)) {
-    modelList = [{ id: props.modelValue, object: 'model' }, ...models.value];
+  if (props.modelValue && !models.value.some((model) => model.id === props.modelValue)) {
+    modelList = [{ id: props.modelValue, object: 'model' }, ...models.value]
   }
 
-  // 根据搜索关键词筛选模型
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase();
-    return modelList.filter(m =>
-      m.id.toLowerCase().includes(query) ||
-      (m.owned_by && m.owned_by.toLowerCase().includes(query))
-    );
+  if (!searchQuery.value.trim()) {
+    return modelList
   }
 
-  return modelList;
-});
+  const query = searchQuery.value.trim().toLowerCase()
+  return modelList.filter((model) => {
+    const owner = typeof model.owned_by === 'string' ? model.owned_by : ''
+    return model.id.toLowerCase().includes(query) || owner.toLowerCase().includes(query)
+  })
+})
 
 async function loadModels() {
   if (!props.apiConfig.endpoint || !props.apiConfig.key) {
-    error.value = '请先配置API端点和密钥';
-    return;
+    error.value = '请先填写端点和 API 密钥'
+    return
   }
 
-  loading.value = true;
-  error.value = '';
+  loading.value = true
+  error.value = ''
 
   try {
-    models.value = await fetchModels(props.apiConfig);
+    models.value = await apiStore.fetchModels(props.apiConfig)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '获取模型失败';
-    console.error('获取模型失败:', err);
+    error.value = err instanceof Error ? err.message : '获取模型失败'
+    console.error('获取模型失败:', err)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
-function toggleDropdown() {
-  isOpen.value = !isOpen.value;
-  if (isOpen.value && models.value.length === 0) {
-    loadModels();
+function openDropdown() {
+  isOpen.value = true
+  if (models.value.length === 0) {
+    void loadModels()
   }
 }
 
 function handleInput(event: Event) {
-  const target = event.target as HTMLInputElement;
-  searchQuery.value = target.value;
-  selectedModel.value = target.value;
-
-  // 输入时自动打开下拉框
-  if (!isOpen.value) {
-    isOpen.value = true;
-    if (models.value.length === 0) {
-      loadModels();
-    }
-  }
+  const value = (event.target as HTMLInputElement).value
+  searchQuery.value = value
+  selectedModel.value = value
+  openDropdown()
 }
 
 function selectModel(modelId: string) {
-  selectedModel.value = modelId;
-  searchQuery.value = ''; // 清除搜索关键词
-  isOpen.value = false;
+  selectedModel.value = modelId
+  searchQuery.value = ''
+  isOpen.value = false
 }
 
-function handleRefreshModels() {
-  loadModels();
-}
-
-// 监听API配置变化，清空模型列表（但不清空已选中的模型）
-watch(() => [props.apiConfig.endpoint, props.apiConfig.key], () => {
-  models.value = [];
-  error.value = '';
-  // 不清空 selectedModel.value，保持用户已选择的模型
-}, { deep: true });
-
-// 点击外部关闭下拉框
 function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement;
-  if (!target.closest('.model-select')) {
-    isOpen.value = false;
+  if (!rootRef.value) {
+    return
+  }
+
+  const target = event.target as Node | null
+  if (target && !rootRef.value.contains(target)) {
+    isOpen.value = false
   }
 }
 
-// 添加全局点击监听
-if (typeof document !== 'undefined') {
-  document.addEventListener('click', handleClickOutside);
-}
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
-  <div class="model-select">
-    <div class="model-input-group">
-      <div class="model-input-wrapper">
-        <input
-          v-model="selectedModel"
-          type="text"
-          class="model-input"
-          placeholder="请选择或输入模型名称"
-          @input="handleInput"
-          @focus="toggleDropdown"
-        />
-        <button
-          class="refresh-button"
-          :disabled="loading || !apiConfig.endpoint || !apiConfig.key"
-          @click="handleRefreshModels"
-          title="刷新模型列表"
-        >
-          <MdRefresh class="w-4 h-4" :class="{ 'animate-spin': loading }" />
-        </button>
-      </div>
+  <div ref="rootRef" class="relative w-full">
+    <div class="relative flex items-center">
+      <input
+        v-model="selectedModel"
+        type="text"
+        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
+        placeholder="选择或输入模型名称"
+        @input="handleInput"
+        @focus="openDropdown"
+      />
 
-      <!-- 下拉模型列表 -->
-      <div v-if="isOpen" class="model-dropdown">
-        <div v-if="loading" class="dropdown-loading">
-          加载中...
-        </div>
-        <div v-else-if="error" class="dropdown-error">
-          {{ error }}
-        </div>
-        <div v-else-if="displayModels.length === 0" class="dropdown-empty">
-          <span v-if="searchQuery.trim()">未找到匹配的模型</span>
-          <span v-else>暂无可用模型</span>
-        </div>
-        <div v-else class="dropdown-list">
-          <!-- 显示筛选结果数量 -->
-          <div v-if="searchQuery.trim()" class="filter-info">
-            找到 {{ displayModels.length }} 个匹配的模型
-          </div>
-          <div
-            v-for="model in displayModels"
-            :key="model.id"
-            class="dropdown-item"
-            :class="{ active: selectedModel === model.id }"
-            @click="selectModel(model.id)"
-          >
-            <span class="model-name">{{ model.id }}</span>
-            <span v-if="model.owned_by" class="model-owner">{{ model.owned_by }}</span>
-          </div>
-        </div>
+      <button
+        type="button"
+        class="absolute right-3 rounded-full p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="loading || !apiConfig.endpoint || !apiConfig.key"
+        title="刷新模型列表"
+        @click="loadModels"
+      >
+        <MdRefresh class="h-4 w-4" :class="{ 'animate-spin': loading }" />
+      </button>
+    </div>
+
+    <div
+      v-if="isOpen"
+      class="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl"
+    >
+      <div v-if="loading" class="px-4 py-3 text-sm text-gray-500">
+        正在获取模型列表...
+      </div>
+      <div v-else-if="error" class="px-4 py-3 text-sm text-red-600">
+        {{ error }}
+      </div>
+      <div v-else-if="displayModels.length === 0" class="px-4 py-3 text-sm text-gray-500">
+        {{ searchQuery.trim() ? '没有匹配的模型' : '暂无可用模型' }}
+      </div>
+      <div v-else class="max-h-64 overflow-y-auto py-2">
+        <button
+          v-for="model in displayModels"
+          :key="model.id"
+          type="button"
+          class="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-gray-50"
+          :class="selectedModel === model.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'"
+          @click="selectModel(model.id)"
+        >
+          <span class="truncate font-medium">{{ model.id }}</span>
+          <span v-if="model.owned_by" class="truncate text-xs text-gray-400">{{ model.owned_by }}</span>
+        </button>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.model-select {
-  position: relative;
-  width: 100%;
-}
-
-.model-input-group {
-  position: relative;
-}
-
-.model-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.model-input {
-  width: 100%;
-  padding: 0.5rem 2.5rem 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  color: #1f2937;
-  background-color: white;
-  transition: border-color 0.2s;
-}
-
-.model-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.refresh-button {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0.25rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: #6b7280;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.refresh-button:hover:not(:disabled) {
-  background-color: #f3f4f6;
-  color: #374151;
-}
-
-.refresh-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.model-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background-color: white;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.dropdown-loading,
-.dropdown-error,
-.dropdown-empty {
-  padding: 0.75rem;
-  text-align: center;
-  color: #6b7280;
-  font-size: 0.875rem;
-}
-
-.dropdown-error {
-  color: #ef4444;
-}
-
-.filter-info {
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
-  color: #6b7280;
-  background-color: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-  text-align: center;
-}
-
-.dropdown-list {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.dropdown-item {
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background-color 0.2s;
-}
-
-.dropdown-item:hover {
-  background-color: #f3f4f6;
-}
-
-.dropdown-item.active {
-  background-color: #dbeafe;
-  color: #1d4ed8;
-}
-
-.model-name {
-  font-weight: 500;
-}
-
-.model-owner {
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-</style>

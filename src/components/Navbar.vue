@@ -18,7 +18,7 @@ function handleSettings() {
 </script>
 
 <template>
-    <nav class="bg-white shadow-md border-b border-gray-200 px-6 py-2">
+    <nav class="sticky top-0 z-30 shrink-0 border-b border-gray-200 bg-white px-6 py-2 shadow-md">
         <div class="flex items-center justify-between">
             <!-- 左侧：返回按钮 + 页面名称 -->
             <div class="flex items-center gap-3">

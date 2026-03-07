@@ -107,9 +107,9 @@ provide(ModalSymbol, {
 </script>
 
 <template>
-    <div id="app" class="min-h-screen bg-gray-50">
+    <div id="app" class="flex h-screen flex-col overflow-hidden bg-gray-50">
         <Navbar />
-        <main class="flex w-full p-2">
+        <main class="flex min-h-0 w-full flex-1 overflow-hidden p-2">
             <RouterView />
         </main>
 

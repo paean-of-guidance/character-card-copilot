@@ -1,129 +1,115 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
-import type { ApiConfig, ApiTestResult } from '@/types/api';
-import { useApiStore } from '@/stores/api';
-import ApiItem from './ApiItem.vue';
-import NewApiDialog from './NewApiDialog.vue';
+import { computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import { MdAdd } from 'vue-icons-plus/md'
+import type { ApiConfig } from '@/types/api'
+import { useApiStore } from '@/stores/api'
+import ApiItem from './ApiItem.vue'
+
+const props = withDefaults(
+  defineProps<{
+    selectedProfile?: string
+    searchQuery?: string
+  }>(),
+  {
+    selectedProfile: '',
+    searchQuery: '',
+  },
+)
 
 const emit = defineEmits<{
-  select: [api: ApiConfig];
-  testConnection: [result: ApiTestResult];
-  copy: [api: ApiConfig];
-}>();
+  select: [api: ApiConfig]
+  copy: [api: ApiConfig]
+  delete: [profile: string]
+  create: []
+}>()
 
-const apiStore = useApiStore();
-const { apis, loading } = storeToRefs(apiStore);
-const showNewApiDialog = ref(false);
+const apiStore = useApiStore()
+const { apis, loading } = storeToRefs(apiStore)
+
+const filteredApis = computed(() => {
+  const query = props.searchQuery.trim().toLowerCase()
+  if (!query) {
+    return apis.value
+  }
+
+  return apis.value.filter((api) => {
+    return [api.profile, api.endpoint, api.model]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(query))
+  })
+})
 
 onMounted(async () => {
-  // 自动加载API配置
-  await apiStore.loadAllApis();
-});
-
-function handleSelectApi(api: ApiConfig) {
-  emit('select', api);
-}
-
-async function handleDeleteApi(profile: string) {
-  // TODO: 确认删除对话框
-  try {
-    await apiStore.deleteApi(profile);
-  } catch (error) {
-    console.error('删除API配置失败:', error);
-  }
-}
-
-async function handleSetDefault(profile: string) {
-  try {
-    await apiStore.setDefaultApi(profile);
-  } catch (error) {
-    console.error('设置默认API配置失败:', error);
-  }
-}
-
-async function handleToggleEnabled(profile: string, enabled: boolean) {
-  try {
-    await apiStore.toggleApi(profile, enabled);
-  } catch (error) {
-    console.error('切换API启用状态失败:', error);
-  }
-}
-
-function handleTestConnection(result: ApiTestResult) {
-  emit('testConnection', result);
-}
-
-function handleCopyApi(_api: ApiConfig) {
-  emit('copy', _api);
-}
-
-function handleNewApiCreated(_api: ApiConfig) {
-  showNewApiDialog.value = false;
-}
+  await apiStore.loadAllApis()
+})
 </script>
 
 <template>
-  <div class="api-list">
-    <div v-if="loading" class="text-center py-8 text-gray-600">
-      加载中...
+  <div class="flex h-full min-h-0 flex-col gap-2.5">
+    <div v-if="loading" class="flex-1 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+      正在加载 API 配置...
     </div>
 
-    <div v-else class="api-list-container">
-      <ApiItem
-        v-for="api in apis"
-        :key="api.profile"
-        :api="api"
-        @select="handleSelectApi"
-        @delete="handleDeleteApi"
-        @setDefault="handleSetDefault"
-        @toggleEnabled="handleToggleEnabled"
-        @testConnection="handleTestConnection"
-        @copy="handleCopyApi"
-      />
+    <template v-else>
+      <div class="thin-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div
+          v-if="filteredApis.length === 0"
+          class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center"
+        >
+          <p class="text-sm font-medium text-gray-700">
+            {{ apis.length === 0 ? '还没有 API 配置' : '没有匹配的配置' }}
+          </p>
+          <p class="mt-1 text-xs text-gray-500">
+            {{ apis.length === 0 ? '先创建一个配置，再测试和启用。' : '试试更换搜索关键词。' }}
+          </p>
+        </div>
 
-      <!-- 新建API按钮 -->
-      <div
-        class="api-item new-api-item cursor-pointer hover:bg-gray-50 border border-gray-200 rounded-lg p-4"
-        @click="showNewApiDialog = true"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-              <span class="text-blue-600 font-semibold">+</span>
-            </div>
-            <span class="text-gray-700 font-medium">新建API</span>
-          </div>
+        <div v-else class="space-y-2.5 pb-1">
+          <ApiItem
+            v-for="api in filteredApis"
+            :key="api.profile"
+            :api="api"
+            :selected="api.profile === selectedProfile"
+            @select="emit('select', $event)"
+            @copy="emit('copy', $event)"
+            @delete="emit('delete', $event)"
+          />
         </div>
       </div>
-    </div>
 
-    <!-- 新建API对话框 -->
-    <NewApiDialog
-      v-if="showNewApiDialog"
-      @created="handleNewApiCreated"
-      @cancel="showNewApiDialog = false"
-    />
+        <button
+        type="button"
+        class="shrink-0 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-3 py-3 text-sm font-medium text-blue-700 transition-colors hover:border-blue-400 hover:bg-blue-100"
+        @click="emit('create')"
+      >
+        <MdAdd class="h-4 w-4" />
+        新建 API 配置
+      </button>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.api-list-container {
-  max-height: 500px;
-  overflow-y: auto;
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
-.api-item {
-  margin-bottom: 0.5rem;
+.thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
 }
 
-.new-api-item {
-  border-style: dashed;
-  border-color: #9ca3af;
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.new-api-item:hover {
-  border-style: solid;
-  border-color: #3b82f6;
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: #cbd5e1;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
 }
 </style>

@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "check": "pnpm check:web && pnpm check:rust",
+    "check:web": "vue-tsc --noEmit",
+    "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
     "tauri": "tauri"
   },

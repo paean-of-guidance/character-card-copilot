@@ -75,6 +75,11 @@ pnpm install
 pnpm tauri dev
 ```
 
+### 运行健康检查
+```bash
+pnpm check
+```
+
 ### 构建应用
 ```bash
 pnpm tauri build

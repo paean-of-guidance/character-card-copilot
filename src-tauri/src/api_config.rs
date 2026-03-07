@@ -51,6 +51,154 @@ pub struct ModelInfo {
     pub object: String,
 }
 
+fn normalize_profile(profile: &str) -> String {
+    profile.trim().to_string()
+}
+
+fn normalize_optional_text(value: Option<String>) -> String {
+    value.unwrap_or_default().trim().to_string()
+}
+
+fn validate_profile(profile: &str) -> Result<(), String> {
+    if profile.is_empty() {
+        return Err("API配置名称不能为空".to_string());
+    }
+
+    if profile.chars().count() < 2 {
+        return Err("API配置名称至少需要2个字符".to_string());
+    }
+
+    if profile.chars().count() > 50 {
+        return Err("API配置名称不能超过50个字符".to_string());
+    }
+
+    Ok(())
+}
+
+fn ensure_unique_profile(
+    configs: &[ApiConfig],
+    profile: &str,
+    exclude_profile: Option<&str>,
+) -> Result<(), String> {
+    let duplicated = configs.iter().any(|config| {
+        config.profile == profile && exclude_profile != Some(config.profile.as_str())
+    });
+
+    if duplicated {
+        return Err(format!("API配置 '{}' 已存在", profile));
+    }
+
+    Ok(())
+}
+
+fn build_new_config(configs: &mut Vec<ApiConfig>, request: CreateApiRequest) -> Result<ApiConfig, String> {
+    let profile = normalize_profile(&request.profile);
+    validate_profile(&profile)?;
+    ensure_unique_profile(configs, &profile, None)?;
+
+    let enabled = request.enabled.unwrap_or(false);
+    let default = request.default.unwrap_or(false);
+
+    if default && !enabled {
+        return Err("默认配置必须先启用".to_string());
+    }
+
+    if default {
+        for config in configs.iter_mut() {
+            config.default = false;
+        }
+    }
+
+    Ok(ApiConfig {
+        profile,
+        endpoint: normalize_optional_text(request.endpoint),
+        key: normalize_optional_text(request.key),
+        model: normalize_optional_text(request.model),
+        default,
+        enabled,
+    })
+}
+
+fn update_config_in_configs(configs: &mut [ApiConfig], request: UpdateApiRequest) -> Result<(), String> {
+    let config_index = configs
+        .iter()
+        .position(|config| config.profile == request.original_profile)
+        .ok_or_else(|| format!("未找到配置 '{}'", request.original_profile))?;
+
+    let profile = normalize_profile(&request.profile);
+    validate_profile(&profile)?;
+    ensure_unique_profile(configs, &profile, Some(request.original_profile.as_str()))?;
+
+    let mut updated_config = configs[config_index].clone();
+    updated_config.profile = profile;
+
+    if let Some(endpoint) = request.endpoint {
+        updated_config.endpoint = endpoint.trim().to_string();
+    }
+    if let Some(key) = request.key {
+        updated_config.key = key.trim().to_string();
+    }
+    if let Some(model) = request.model {
+        updated_config.model = model.trim().to_string();
+    }
+    if let Some(enabled) = request.enabled {
+        updated_config.enabled = enabled;
+        if !enabled {
+            updated_config.default = false;
+        }
+    }
+
+    if let Some(default) = request.default {
+        if default {
+            if !updated_config.enabled {
+                return Err("启用后的配置才能设为默认".to_string());
+            }
+
+            for config in configs.iter_mut() {
+                config.default = false;
+            }
+            updated_config.default = true;
+        } else {
+            updated_config.default = false;
+        }
+    }
+
+    configs[config_index] = updated_config;
+    Ok(())
+}
+
+fn set_default_in_configs(configs: &mut [ApiConfig], profile: &str) -> Result<(), String> {
+    let target_index = configs
+        .iter()
+        .position(|config| config.profile == profile)
+        .ok_or_else(|| format!("未找到配置 '{}'", profile))?;
+
+    if !configs[target_index].enabled {
+        return Err("启用后的配置才能设为默认".to_string());
+    }
+
+    for (index, config) in configs.iter_mut().enumerate() {
+        config.default = index == target_index;
+    }
+
+    Ok(())
+}
+
+fn toggle_enabled_in_configs(configs: &mut [ApiConfig], profile: &str, enabled: bool) -> Result<(), String> {
+    let config = configs
+        .iter_mut()
+        .find(|config| config.profile == profile)
+        .ok_or_else(|| format!("未找到配置 '{}'", profile))?;
+
+    config.enabled = enabled;
+
+    if !enabled {
+        config.default = false;
+    }
+
+    Ok(())
+}
+
 /// API配置服务
 pub struct ApiConfigService;
 
@@ -100,27 +248,7 @@ impl ApiConfigService {
     /// 创建新的API配置
     pub fn create_api_config(app_handle: &tauri::AppHandle, request: CreateApiRequest) -> Result<ApiConfig, String> {
         let mut configs = Self::read_api_configs(app_handle)?;
-
-        // 检查配置名称是否已存在
-        if configs.iter().any(|config| config.profile == request.profile) {
-            return Err(format!("API配置 '{}' 已存在", request.profile));
-        }
-
-        let new_config = ApiConfig {
-            profile: request.profile,
-            endpoint: request.endpoint.unwrap_or_default(),
-            key: request.key.unwrap_or_default(),
-            model: request.model.unwrap_or_default(),
-            default: request.default.unwrap_or(false),
-            enabled: request.enabled.unwrap_or(false),
-        };
-
-        // 如果设置为默认，清除其他默认配置
-        if new_config.default {
-            for config in &mut configs {
-                config.default = false;
-            }
-        }
+        let new_config = build_new_config(&mut configs, request)?;
 
         configs.push(new_config.clone());
         Self::write_api_configs(app_handle, &configs)?;
@@ -131,46 +259,7 @@ impl ApiConfigService {
     /// 更新API配置
     pub fn update_api_config(app_handle: &tauri::AppHandle, request: UpdateApiRequest) -> Result<(), String> {
         let mut configs = Self::read_api_configs(app_handle)?;
-
-        let config_index = configs.iter()
-            .position(|config| config.profile == request.original_profile)
-            .ok_or_else(|| format!("未找到配置 '{}'", request.original_profile))?;
-
-        // 克隆当前配置以避免借用冲突
-        let mut updated_config = configs[config_index].clone();
-
-        // 更新profile名称
-        updated_config.profile = request.profile;
-
-        // 更新其他字段
-        if let Some(endpoint) = request.endpoint {
-            updated_config.endpoint = endpoint;
-        }
-        if let Some(key) = request.key {
-            updated_config.key = key;
-        }
-        if let Some(model) = request.model {
-            updated_config.model = model;
-        }
-        if let Some(enabled) = request.enabled {
-            updated_config.enabled = enabled;
-        }
-
-        // 处理默认设置
-        if let Some(default) = request.default {
-            if default && !updated_config.default {
-                // 设置为默认，清除其他默认配置
-                for config in &mut configs {
-                    config.default = false;
-                }
-                updated_config.default = true;
-            } else if !default && updated_config.default {
-                updated_config.default = false;
-            }
-        }
-
-        // 替换配置
-        configs[config_index] = updated_config;
+        update_config_in_configs(&mut configs, request)?;
 
         Self::write_api_configs(app_handle, &configs)?;
         Ok(())
@@ -194,20 +283,7 @@ impl ApiConfigService {
     /// 设置默认API配置
     pub fn set_default_api_config(app_handle: &tauri::AppHandle, profile: &str) -> Result<(), String> {
         let mut configs = Self::read_api_configs(app_handle)?;
-
-        let mut config_found = false;
-        for config in configs.iter_mut() {
-            if config.profile == profile {
-                config.default = true;
-                config_found = true;
-            } else {
-                config.default = false;
-            }
-        }
-
-        if !config_found {
-            return Err(format!("未找到配置 '{}'", profile));
-        }
+        set_default_in_configs(&mut configs, profile)?;
 
         Self::write_api_configs(app_handle, &configs)?;
         Ok(())
@@ -216,12 +292,7 @@ impl ApiConfigService {
     /// 启用/禁用API配置
     pub fn toggle_api_config(app_handle: &tauri::AppHandle, profile: &str, enabled: bool) -> Result<(), String> {
         let mut configs = Self::read_api_configs(app_handle)?;
-
-        let config = configs.iter_mut()
-            .find(|config| config.profile == profile)
-            .ok_or_else(|| format!("未找到配置 '{}'", profile))?;
-
-        config.enabled = enabled;
+        toggle_enabled_in_configs(&mut configs, profile, enabled)?;
 
         Self::write_api_configs(app_handle, &configs)?;
         Ok(())
@@ -337,5 +408,90 @@ impl ApiConfigService {
         };
 
         Ok(models)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_configs() -> Vec<ApiConfig> {
+        vec![
+            ApiConfig {
+                profile: "Primary".to_string(),
+                endpoint: "https://example.com/v1".to_string(),
+                key: "key-1".to_string(),
+                model: "gpt-4.1".to_string(),
+                default: true,
+                enabled: true,
+            },
+            ApiConfig {
+                profile: "Backup".to_string(),
+                endpoint: "https://backup.example.com/v1".to_string(),
+                key: "key-2".to_string(),
+                model: "gpt-4.1-mini".to_string(),
+                default: false,
+                enabled: true,
+            },
+        ]
+    }
+
+    #[test]
+    fn create_config_rejects_disabled_default() {
+        let mut configs = sample_configs();
+        let result = build_new_config(
+            &mut configs,
+            CreateApiRequest {
+                profile: " Draft ".to_string(),
+                endpoint: Some(" https://draft.example.com/v1 ".to_string()),
+                key: Some(" key-3 ".to_string()),
+                model: Some(" model-3 ".to_string()),
+                default: Some(true),
+                enabled: Some(false),
+            },
+        );
+
+        assert_eq!(result.unwrap_err(), "默认配置必须先启用");
+    }
+
+    #[test]
+    fn update_config_rejects_duplicate_profile() {
+        let mut configs = sample_configs();
+        let result = update_config_in_configs(
+            &mut configs,
+            UpdateApiRequest {
+                profile: "Backup".to_string(),
+                original_profile: "Primary".to_string(),
+                endpoint: None,
+                key: None,
+                model: None,
+                default: None,
+                enabled: None,
+            },
+        );
+
+        assert_eq!(result.unwrap_err(), "API配置 'Backup' 已存在");
+    }
+
+    #[test]
+    fn set_default_requires_enabled_config() {
+        let mut configs = sample_configs();
+        configs[1].enabled = false;
+
+        let result = set_default_in_configs(&mut configs, "Backup");
+
+        assert_eq!(result.unwrap_err(), "启用后的配置才能设为默认");
+        assert!(configs[0].default);
+        assert!(!configs[1].default);
+    }
+
+    #[test]
+    fn disabling_default_config_clears_default_flag() {
+        let mut configs = sample_configs();
+
+        toggle_enabled_in_configs(&mut configs, "Primary", false).unwrap();
+
+        assert!(!configs[0].enabled);
+        assert!(!configs[0].default);
     }
 }

@@ -53,7 +53,7 @@ async function handleCreate() {
 
     emit('created', newApi);
   } catch (err) {
-    error.value = '创建API配置失败，请重试';
+    error.value = err instanceof Error ? err.message : '创建API配置失败，请重试';
     console.error('创建API配置失败:', err);
   } finally {
     loading.value = false;
@@ -75,7 +75,8 @@ function handleInput() {
   <div class="dialog-overlay">
     <div class="dialog">
       <div class="dialog-header">
-        <h2 class="text-xl font-semibold text-gray-800">新建API配置</h2>
+        <h2 class="text-xl font-semibold text-gray-800">新建 API 配置</h2>
+        <p class="mt-1 text-sm text-gray-500">先创建名称，随后在详情面板中补全端点、密钥与模型。</p>
       </div>
 
       <div class="dialog-body">
@@ -104,14 +105,14 @@ function handleInput() {
 
       <div class="dialog-footer">
         <button
-          class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full"
+          class="rounded-full border border-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-50"
           :disabled="loading"
           @click="handleCancel"
         >
           取消
         </button>
         <button
-          class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full"
+          class="rounded-full bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700"
           :disabled="loading || !profileName.trim()"
           @click="handleCreate"
         >
