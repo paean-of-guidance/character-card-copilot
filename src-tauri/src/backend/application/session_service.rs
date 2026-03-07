@@ -1,5 +1,7 @@
 use crate::backend::application::event_bus::EventBus;
+use crate::backend::domain::sessions::config::ContextBuilderOptions;
 use crate::backend::domain::{SessionInfo, SessionUnloadReason, TokenUsageStats};
+use crate::ai_config::{AIConfigService, AIRole};
 use crate::character_session::{CharacterSession, SESSION_MANAGER};
 use crate::tools::ToolRegistry;
 use tauri::AppHandle;
@@ -19,10 +21,15 @@ impl SessionService {
         Ok(session.get_session_info())
     }
 
-    pub async fn send_chat_message(app_handle: &AppHandle, message: String) -> Result<(), String> {
+    pub async fn send_chat_message(
+        app_handle: &AppHandle,
+        message: String,
+        role_id: Option<String>,
+    ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
+        session.set_selected_ai_role_id(role_id.clone());
 
         let user_message = session.add_user_message(message);
 
@@ -35,7 +42,7 @@ impl SessionService {
 
         SESSION_MANAGER.update_session(session.clone())?;
 
-        Self::generate_ai_response(app_handle, &mut session, "chat").await
+        Self::generate_ai_response(app_handle, &mut session, "chat", role_id).await
     }
 
     pub async fn unload_session(app_handle: &AppHandle, uuid: String) -> Result<(), String> {
@@ -155,10 +162,14 @@ impl SessionService {
         Ok(())
     }
 
-    pub async fn regenerate_last_message(app_handle: &AppHandle) -> Result<(), String> {
+    pub async fn regenerate_last_message(
+        app_handle: &AppHandle,
+        role_id: Option<String>,
+    ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
+        let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
 
         if session.chat_history.is_empty() {
             return Err("聊天历史为空，无法重新生成".to_string());
@@ -186,13 +197,17 @@ impl SessionService {
 
         SESSION_MANAGER.update_session(session.clone())?;
 
-        Self::generate_ai_response(app_handle, &mut session, "regenerate").await
+        Self::generate_ai_response(app_handle, &mut session, "regenerate", effective_role_id).await
     }
 
-    pub async fn continue_chat(app_handle: &AppHandle) -> Result<(), String> {
+    pub async fn continue_chat(
+        app_handle: &AppHandle,
+        role_id: Option<String>,
+    ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
         let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
+        let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
 
         if session.chat_history.is_empty() {
             return Err("聊天历史为空，无法继续对话".to_string());
@@ -205,15 +220,30 @@ impl SessionService {
 
         crate::debug_log!("继续对话，基于最后一条用户消息: {:?}", last_message.content);
 
-        Self::generate_ai_response(app_handle, &mut session, "continue").await
+        Self::generate_ai_response(app_handle, &mut session, "continue", effective_role_id).await
+    }
+
+    fn build_context_options(ai_role: &AIRole) -> ContextBuilderOptions {
+        let mut options = ContextBuilderOptions::default();
+        options.ai_role = ai_role.context_role_template.clone();
+        options.ai_task = ai_role.context_task_template.clone();
+        options.ai_instructions = ai_role.context_instructions_template.clone();
+        options.tools_enabled = ai_role.tools_enabled;
+        options
     }
 
     async fn generate_ai_response(
         app_handle: &AppHandle,
         session: &mut CharacterSession,
         operation_type: &str,
+        requested_role_id: Option<String>,
     ) -> Result<(), String> {
-        let context_builder = crate::context_builder::create_default_context_builder();
+        let (resolved_role_id, ai_role) =
+            AIConfigService::resolve_role(app_handle, requested_role_id.as_deref())?;
+        session.set_selected_ai_role_id(Some(resolved_role_id.clone()));
+
+        let context_builder =
+            crate::context_builder::create_context_builder(Self::build_context_options(&ai_role));
         let context_result = context_builder
             .build_full_context(&session.character_data, &session.chat_history, None)
             .map_err(|e| format!("构建上下文失败: {}", e))?;
@@ -221,6 +251,16 @@ impl SessionService {
         EventBus::context_built(app_handle, &session.uuid, &context_result)?;
 
         let mut ai_chat_messages = Vec::new();
+
+        if !ai_role.system_prompt.trim().is_empty() {
+            ai_chat_messages.push(crate::ai_chat::ChatMessage {
+                role: crate::ai_chat::MessageRole::System,
+                content: ai_role.system_prompt.clone(),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
 
         for msg in context_result.system_messages {
             ai_chat_messages.push(crate::ai_chat::ChatMessage {
@@ -287,11 +327,17 @@ impl SessionService {
         let api_config = crate::api_config::ApiConfigService::get_default_api_config(app_handle)?
             .ok_or("没有可用的API配置")?;
 
-        let chat_tools = ToolRegistry::get_available_tools_global();
+        let chat_tools = if ai_role.tools_enabled {
+            ToolRegistry::get_available_tools_global()
+        } else {
+            Vec::new()
+        };
 
         let disable_tools_for_debug = false;
 
         crate::debug_log!("=== AI 请求调试信息 ===");
+        crate::debug_log!("AI角色ID: {}", resolved_role_id);
+        crate::debug_log!("AI角色名称: {}", ai_role.name);
         crate::debug_log!("模型: {}", api_config.model);
         crate::debug_log!("API端点: {}", api_config.base_url);
         crate::debug_log!("消息数量: {}", ai_chat_messages.len());
@@ -324,19 +370,19 @@ impl SessionService {
         let request = crate::ai_chat::ChatCompletionRequest {
             model: api_config.model.clone(),
             messages: ai_chat_messages,
-            temperature: Some(0.7),
-            max_tokens: Some(2048),
+            temperature: Some(ai_role.temperature as f64),
+            max_tokens: Some(ai_role.max_tokens),
             top_p: None,
             frequency_penalty: None,
             presence_penalty: None,
             stop: None,
             stream: Some(true),
-            tools: if disable_tools_for_debug {
+            tools: if disable_tools_for_debug || !ai_role.tools_enabled || chat_tools.is_empty() {
                 None
             } else {
                 Some(chat_tools)
             },
-            tool_choice: if disable_tools_for_debug {
+            tool_choice: if disable_tools_for_debug || !ai_role.tools_enabled {
                 None
             } else {
                 Some(crate::ai_chat::ToolChoice::String("auto".to_string()))

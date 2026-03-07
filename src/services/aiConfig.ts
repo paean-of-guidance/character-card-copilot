@@ -1,67 +1,53 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core'
 
 export interface AIRole {
-  name: string;
-  description: string;
-  system_prompt: string;
-  temperature: number;
-  max_tokens: number;
-  tools_enabled: boolean;
+  name: string
+  description: string
+  system_prompt: string
+  temperature: number
+  max_tokens: number
+  tools_enabled: boolean
+  context_role_template: string
+  context_task_template: string
+  context_instructions_template: string
+}
+
+export interface AIRoleEntry {
+  id: string
+  role: AIRole
 }
 
 export interface AIConfig {
-  default_role: string;
-  roles: Record<string, AIRole>;
+  default_role: string
+  roles: Record<string, AIRole>
 }
 
 export class AIConfigService {
-  /**
-   * 获取AI配置
-   */
   static async getConfig(): Promise<AIConfig> {
-    return await invoke<AIConfig>('get_ai_config');
+    return await invoke<AIConfig>('get_ai_config')
   }
 
-  /**
-   * 获取指定AI角色
-   */
-  static async getRole(roleName: string): Promise<AIRole | null> {
-    return await invoke<AIRole | null>('get_ai_role', { roleName });
+  static async getRole(roleId: string): Promise<AIRole | null> {
+    return await invoke<AIRole | null>('get_ai_role', { roleId })
   }
 
-  /**
-   * 更新AI角色
-   */
-  static async updateRole(roleName: string, role: AIRole): Promise<void> {
-    await invoke<void>('update_ai_role', { roleName, role });
+  static async updateRole(roleId: string, role: AIRole): Promise<void> {
+    await invoke<void>('update_ai_role', { roleId, role })
   }
 
-  /**
-   * 添加新的AI角色
-   */
-  static async addRole(roleName: string, role: AIRole): Promise<void> {
-    await invoke<void>('add_ai_role', { roleName, role });
+  static async createRole(role: AIRole): Promise<string> {
+    return await invoke<string>('add_ai_role', { role })
   }
 
-  /**
-   * 删除AI角色
-   */
-  static async deleteRole(roleName: string): Promise<void> {
-    await invoke<void>('delete_ai_role', { roleName });
+  static async deleteRole(roleId: string): Promise<void> {
+    await invoke<void>('delete_ai_role', { roleId })
   }
 
-  /**
-   * 设置默认AI角色
-   */
-  static async setDefaultRole(roleName: string): Promise<void> {
-    await invoke<void>('set_default_ai_role', { roleName });
+  static async setDefaultRole(roleId: string): Promise<void> {
+    await invoke<void>('set_default_ai_role', { roleId })
   }
 
-  /**
-   * 获取所有AI角色
-   */
-  static async getAllRoles(): Promise<Array<{ name: string; role: AIRole }>> {
-    const roles = await invoke<Array<[string, AIRole]>>('get_all_ai_roles');
-    return roles.map(([name, role]) => ({ name, role }));
+  static async getAllRoles(): Promise<AIRoleEntry[]> {
+    return await invoke<AIRoleEntry[]>('get_all_ai_roles')
   }
 }

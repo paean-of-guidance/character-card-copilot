@@ -45,7 +45,7 @@ impl CommandExecutor for ContinueCommand {
     }
 
     async fn execute(&self, context: CommandContext) -> Result<CommandResult, String> {
-        SessionService::continue_chat(&context.app_handle).await?;
+        SessionService::continue_chat(&context.app_handle, None).await?;
 
         Ok(CommandResult {
             success: true,

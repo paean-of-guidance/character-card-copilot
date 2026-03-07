@@ -16,6 +16,8 @@ pub struct CharacterSession {
     pub character_data: CharacterData,
     /// 聊天历史记录
     pub chat_history: Vec<ChatMessage>,
+    /// 当前会话最近一次使用的 AI 角色 ID
+    pub selected_ai_role_id: Option<String>,
     /// 上次上下文 Token 数量
     pub last_context_tokens: usize,
     /// 最后活跃时间
@@ -34,6 +36,7 @@ impl CharacterSession {
             uuid,
             character_data,
             chat_history: Vec::new(),
+            selected_ai_role_id: None,
             last_context_tokens: 0,
             last_active: now,
             status: SessionStatus::Loading,
@@ -81,6 +84,11 @@ impl CharacterSession {
         self.chat_history.push(message.clone());
         self.last_active = Utc::now();
         message
+    }
+
+    pub fn set_selected_ai_role_id(&mut self, role_id: Option<String>) {
+        self.selected_ai_role_id = role_id;
+        self.last_active = Utc::now();
     }
 
     /// 添加 AI 响应消息到历史记录

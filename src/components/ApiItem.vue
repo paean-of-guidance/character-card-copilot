@@ -63,7 +63,7 @@ function handleDelete() {
   >
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 min-w-0">
           <component
             :is="api.enabled ? MdOutlineCheckCircle : MdOutlineRadioButtonUnchecked"
             class="h-4 w-4 shrink-0"
@@ -74,20 +74,20 @@ function handleDelete() {
           </h3>
           <span
             v-if="api.default"
-            class="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700"
+            class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-medium leading-none text-blue-700"
           >
             默认
           </span>
         </div>
 
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-          <span class="rounded-full bg-gray-100 px-2 py-1">
+          <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-gray-100 px-2.5 py-1 leading-none">
             {{ api.enabled ? '已启用' : '未启用' }}
           </span>
-          <span class="rounded-full bg-gray-100 px-2 py-1">
+          <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-gray-100 px-2.5 py-1 leading-none">
             {{ providerLabel }}
           </span>
-          <span class="truncate rounded-full bg-gray-100 px-2 py-1">
+          <span class="inline-flex max-w-full items-center truncate rounded-full bg-gray-100 px-2.5 py-1 leading-none">
             {{ api.model || '未设置模型' }}
           </span>
         </div>

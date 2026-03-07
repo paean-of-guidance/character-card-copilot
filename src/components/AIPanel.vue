@@ -847,12 +847,12 @@ onUnmounted(() => {
                         <option value="" disabled>选择AI角色</option>
                         <option
                             v-for="role in aiRoles"
-                            :key="role.name"
-                            :value="role.name"
+                            :key="role.id"
+                            :value="role.id"
                         >
                             {{ role.role.name }}
                             <span
-                                v-if="role.name === defaultRole"
+                                v-if="role.id === defaultRole"
                                 class="text-blue-500"
                                 >(默认)</span
                             >

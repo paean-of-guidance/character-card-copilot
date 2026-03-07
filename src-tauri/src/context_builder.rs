@@ -1,3 +1,4 @@
+use crate::ai_config::AIConfigService;
 use crate::backend::domain::{ContextBuilderOptions, TokenBudget};
 use crate::character_session::SESSION_MANAGER;
 use crate::character_storage::{CharacterBook, CharacterData, CharacterStorage};
@@ -147,22 +148,25 @@ impl ContextBuilder {
         let task = self.process_placeholders(&self.options.ai_task, character_data);
         content.push_str(&format!("task: {}\n", task));
 
-        // 添加工具定义
-        content.push_str("tools:\n");
-        content.push_str("  - name: \"edit_character\"\n");
-        content.push_str("    description: \"编辑角色字段\"\n");
-        content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"value\": {\"type\": \"string\"}}}\n");
+        if self.options.tools_enabled {
+            content.push_str("tools:\n");
+            content.push_str("  - name: \"edit_character\"\n");
+            content.push_str("    description: \"编辑角色字段\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"value\": {\"type\": \"string\"}}}\n");
 
-        content.push_str("  - name: \"create_worldbook_entry\"\n");
-        content.push_str("    description: \"创建世界书条目\"\n");
-        content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"keys\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}\n");
+            content.push_str("  - name: \"create_worldbook_entry\"\n");
+            content.push_str("    description: \"创建世界书条目\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"keys\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}\n");
+        }
 
         // 添加指令
+        let instructions = self.process_placeholders(&self.options.ai_instructions, character_data);
         content.push_str("instructions: |\n");
-        content.push_str("  基于用户需求分析现有角色设定，提供建议并调用相应工具。\n");
-        content.push_str("  始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。\n");
-        content.push_str("  如果需要修改角色信息，请使用 edit_character 工具。\n");
-        content.push_str("  如果需要添加世界书条目，请使用 create_worldbook_entry 工具。\n");
+        for line in instructions.lines() {
+            content.push_str("  ");
+            content.push_str(line);
+            content.push('\n');
+        }
 
         Ok(vec![OpenAIMessage {
             role: "system".to_string(),
@@ -472,6 +476,9 @@ impl ContextBuilder {
         if let Some(task) = self.options.placeholders.get("{{TASK}}") {
             result = result.replace("{{TASK}}", task);
         }
+        if let Some(instructions) = self.options.placeholders.get("{{INSTRUCTIONS}}") {
+            result = result.replace("{{INSTRUCTIONS}}", instructions);
+        }
 
         // 替换角色相关占位符
         result = result.replace("{{CHARACTER_NAME}}", &character_data.card.data.name);
@@ -504,8 +511,8 @@ impl ContextBuilder {
 // ====================== 辅助函数 ======================
 
 /// 创建默认的上下文构建器
-pub fn create_default_context_builder() -> ContextBuilder {
-    ContextBuilder::new(ContextBuilderOptions::default())
+pub fn create_context_builder(options: ContextBuilderOptions) -> ContextBuilder {
+    ContextBuilder::new(options)
 }
 
 // ====================== Tauri命令 ======================
@@ -516,6 +523,7 @@ pub async fn build_context(
     app_handle: tauri::AppHandle,
     character_uuid: String,
     token_limit: Option<usize>,
+    role_id: Option<String>,
 ) -> Result<BuiltContextResult, String> {
     let (character_data, chat_history) = if let Some(session) =
         SESSION_MANAGER.get_session(&character_uuid)
@@ -528,7 +536,18 @@ pub async fn build_context(
         (character_data, history)
     };
 
-    let mut options = ContextBuilderOptions::default();
+    let mut options = if let Some(requested_role_id) = role_id {
+        let (_, role) = AIConfigService::resolve_role(&app_handle, Some(&requested_role_id))?;
+        let mut resolved_options = ContextBuilderOptions::default();
+        resolved_options.ai_role = role.context_role_template;
+        resolved_options.ai_task = role.context_task_template;
+        resolved_options.ai_instructions = role.context_instructions_template;
+        resolved_options.tools_enabled = role.tools_enabled;
+        resolved_options
+    } else {
+        ContextBuilderOptions::default()
+    };
+
     if let Some(limit) = token_limit {
         options.token_limit = limit;
     }

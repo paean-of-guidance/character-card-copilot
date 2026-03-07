@@ -10,6 +10,9 @@ import type { ApiConfig, ApiProvider } from '@/types/api'
 import ApiList from '@/components/ApiList.vue'
 import ModelSelect from '@/components/ModelSelect.vue'
 import NewApiDialog from '@/components/NewApiDialog.vue'
+import AIRoleSettingsPanel from '@/components/settings/AIRoleSettingsPanel.vue'
+
+type SettingsTab = 'api' | 'ai-role'
 
 const appStore = useAppStore()
 const apiStore = useApiStore()
@@ -18,6 +21,7 @@ const { showErrorToast, showInfoToast, showSuccessToast, showWarningToast } = us
 
 const showNewApiDialog = ref(false)
 const searchQuery = ref('')
+const activeTab = ref<SettingsTab>('api')
 
 const providerOptions: Array<{ value: ApiProvider; label: string; baseUrl: string }> = [
   { value: 'open_ai_compatible', label: 'OpenAI Compatible', baseUrl: 'https://api.openai.com/v1' },
@@ -255,14 +259,37 @@ function handleApiCreated(api: ApiConfig) {
 
 <template>
   <div class="h-full min-h-0 w-full bg-gray-50 px-3 py-3 lg:px-4">
-    <div class="mx-auto grid h-full min-h-0 max-w-7xl grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
+    <div class="mx-auto flex h-full min-h-0 max-w-7xl flex-col gap-3">
+      <div class="flex flex-wrap items-center gap-2 rounded-[24px] border border-gray-200 bg-white p-2 shadow-sm">
+        <button
+          type="button"
+          class="rounded-full px-4 py-2 text-sm font-medium transition"
+          :class="activeTab === 'api' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'"
+          @click="activeTab = 'api'"
+        >
+          API 配置
+        </button>
+        <button
+          type="button"
+          class="rounded-full px-4 py-2 text-sm font-medium transition"
+          :class="activeTab === 'ai-role' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'"
+          @click="activeTab = 'ai-role'"
+        >
+          AI 角色
+        </button>
+      </div>
+
+      <div
+        v-if="activeTab === 'api'"
+        class="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]"
+      >
       <section class="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-gray-200 bg-white p-3 shadow-sm">
         <div class="shrink-0 flex items-start justify-between gap-3">
           <div>
             <h2 class="text-lg font-semibold text-gray-900">API 配置</h2>
             <p class="mt-1 text-sm text-gray-500">管理端点、模型、凭证与默认配置。</p>
           </div>
-          <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+          <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
             {{ apis.length }} 个配置
           </span>
         </div>
@@ -511,6 +538,10 @@ function handleApiCreated(api: ApiConfig) {
           </button>
         </div>
       </section>
+
+      </div>
+
+      <AIRoleSettingsPanel v-else />
     </div>
 
     <NewApiDialog

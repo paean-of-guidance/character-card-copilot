@@ -45,7 +45,7 @@ impl CommandExecutor for RegenerateCommand {
     }
 
     async fn execute(&self, context: CommandContext) -> Result<CommandResult, String> {
-        SessionService::regenerate_last_message(&context.app_handle).await?;
+        SessionService::regenerate_last_message(&context.app_handle, None).await?;
 
         Ok(CommandResult {
             success: true,

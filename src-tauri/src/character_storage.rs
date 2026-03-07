@@ -1,5 +1,6 @@
 use super::file_utils::FileUtils;
 use super::png_utils::PngMetadataUtils;
+use crate::character_session::SESSION_MANAGER;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use image::{imageops::FilterType, DynamicImage, ImageFormat};
 use serde::{Deserialize, Serialize};
@@ -124,6 +125,19 @@ pub struct ImagePaths {
 pub struct CharacterStorage;
 
 impl CharacterStorage {
+    fn sync_session_character_data(app_handle: &tauri::AppHandle, uuid: &str) -> Result<(), String> {
+        let Some(mut session) = SESSION_MANAGER.get_session(uuid) else {
+            return Ok(());
+        };
+
+        let latest_character_data = Self::get_character_by_uuid(app_handle, uuid)?
+            .ok_or_else(|| format!("角色 {} 不存在", uuid))?;
+
+        session.character_data = latest_character_data;
+        SESSION_MANAGER.update_session(session)?;
+        Ok(())
+    }
+
     /// 获取角色卡目录
     fn get_characters_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
         let app_data_dir = FileUtils::get_app_data_dir(app_handle)?;
@@ -479,6 +493,7 @@ impl CharacterStorage {
         character_data.meta.updated_at = chrono::Utc::now().to_rfc3339();
 
         FileUtils::write_json_file(&card_file, &character_data)?;
+        Self::sync_session_character_data(app_handle, uuid)?;
         Ok(())
     }
 
@@ -542,6 +557,8 @@ impl CharacterStorage {
             FileUtils::write_json_file(&card_file, &character_data)?;
         }
 
+        Self::sync_session_character_data(app_handle, uuid)?;
+
         Ok(ImagePaths {
             background_path: card_path.to_string_lossy().to_string(),
             thumbnail_path: thumbnail_path.to_string_lossy().to_string(),
@@ -582,6 +599,7 @@ impl CharacterStorage {
         character_data.meta.updated_at = chrono::Utc::now().to_rfc3339();
 
         FileUtils::write_json_file(&card_file, &character_data)?;
+        Self::sync_session_character_data(app_handle, uuid)?;
         Ok(())
     }
 

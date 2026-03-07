@@ -40,6 +40,10 @@ pub struct ContextBuilderOptions {
     pub ai_role: String,
     /// AI 任务定义（支持占位符）
     pub ai_task: String,
+    /// AI 指令定义（支持占位符）
+    pub ai_instructions: String,
+    /// 是否在上下文中声明工具
+    pub tools_enabled: bool,
     /// 是否优先保留聊天历史
     pub prioritize_chat_history: bool,
     /// 占位符替换映射
@@ -54,12 +58,18 @@ impl Default for ContextBuilderOptions {
             "{{TASK}}".to_string(),
             "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当用户要求(帮忙填写)的时候，主动使用工具(edit_character)填写用户要求的field。当用户确认添加worldbook条目的时候，使用工具(create_world_book_entry)。当用户明确要求删除某个世界书条目时，优先使用 delete_world_book_entry，并尽量传 entry_id 以避免误删。".to_string(),
         );
+        placeholders.insert(
+            "{{INSTRUCTIONS}}".to_string(),
+            "基于用户需求分析现有角色设定，提供建议并调用相应工具。始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。".to_string(),
+        );
 
         Self {
             token_limit: 102400,
             enable_smart_truncation: true,
             ai_role: "{{ROLE}}".to_string(),
             ai_task: "{{TASK}}".to_string(),
+            ai_instructions: "{{INSTRUCTIONS}}".to_string(),
+            tools_enabled: true,
             prioritize_chat_history: true,
             placeholders,
         }

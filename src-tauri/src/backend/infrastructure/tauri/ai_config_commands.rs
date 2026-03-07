@@ -1,4 +1,4 @@
-use crate::ai_config::{AIConfigService, AIRole};
+use crate::ai_config::{AIConfigService, AIRole, AIRoleRecord};
 
 #[tauri::command]
 pub async fn get_ai_config(app_handle: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -8,45 +8,39 @@ pub async fn get_ai_config(app_handle: tauri::AppHandle) -> Result<serde_json::V
 #[tauri::command]
 pub async fn get_ai_role(
     app_handle: tauri::AppHandle,
-    role_name: String,
+    role_id: String,
 ) -> Result<Option<AIRole>, String> {
-    AIConfigService::get_role(&app_handle, &role_name)
+    AIConfigService::get_role(&app_handle, &role_id)
 }
 
 #[tauri::command]
 pub async fn update_ai_role(
     app_handle: tauri::AppHandle,
-    role_name: String,
+    role_id: String,
     role: AIRole,
 ) -> Result<(), String> {
-    AIConfigService::update_role(&app_handle, &role_name, &role)
+    AIConfigService::update_role(&app_handle, &role_id, &role)
 }
 
 #[tauri::command]
-pub async fn add_ai_role(
-    app_handle: tauri::AppHandle,
-    role_name: String,
-    role: AIRole,
-) -> Result<(), String> {
-    AIConfigService::add_role(&app_handle, &role_name, &role)
+pub async fn add_ai_role(app_handle: tauri::AppHandle, role: AIRole) -> Result<String, String> {
+    AIConfigService::add_role(&app_handle, &role)
 }
 
 #[tauri::command]
-pub async fn delete_ai_role(app_handle: tauri::AppHandle, role_name: String) -> Result<(), String> {
-    AIConfigService::delete_role(&app_handle, &role_name)
+pub async fn delete_ai_role(app_handle: tauri::AppHandle, role_id: String) -> Result<(), String> {
+    AIConfigService::delete_role(&app_handle, &role_id)
 }
 
 #[tauri::command]
 pub async fn set_default_ai_role(
     app_handle: tauri::AppHandle,
-    role_name: String,
+    role_id: String,
 ) -> Result<(), String> {
-    AIConfigService::set_default_role(&app_handle, &role_name)
+    AIConfigService::set_default_role(&app_handle, &role_id)
 }
 
 #[tauri::command]
-pub async fn get_all_ai_roles(
-    app_handle: tauri::AppHandle,
-) -> Result<Vec<(String, AIRole)>, String> {
+pub async fn get_all_ai_roles(app_handle: tauri::AppHandle) -> Result<Vec<AIRoleRecord>, String> {
     AIConfigService::get_all_roles(&app_handle)
 }

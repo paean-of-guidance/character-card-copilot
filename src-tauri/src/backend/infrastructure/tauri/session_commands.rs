@@ -15,8 +15,9 @@ pub async fn load_character_session(
 pub async fn send_chat_message(
     app_handle: tauri::AppHandle,
     message: String,
+    role_id: Option<String>,
 ) -> Result<(), String> {
-    SessionService::send_chat_message(&app_handle, message).await
+    SessionService::send_chat_message(&app_handle, message, role_id).await
 }
 
 /// 卸载角色会话
@@ -70,12 +71,18 @@ pub async fn edit_chat_message(
 
 /// 重新生成最后一条AI回复
 #[tauri::command]
-pub async fn regenerate_last_message(app_handle: tauri::AppHandle) -> Result<(), String> {
-    SessionService::regenerate_last_message(&app_handle).await
+pub async fn regenerate_last_message(
+    app_handle: tauri::AppHandle,
+    role_id: Option<String>,
+) -> Result<(), String> {
+    SessionService::regenerate_last_message(&app_handle, role_id).await
 }
 
 /// 继续对话（当最后一条是用户消息时生成AI回复）
 #[tauri::command]
-pub async fn continue_chat(app_handle: tauri::AppHandle) -> Result<(), String> {
-    SessionService::continue_chat(&app_handle).await
+pub async fn continue_chat(
+    app_handle: tauri::AppHandle,
+    role_id: Option<String>,
+) -> Result<(), String> {
+    SessionService::continue_chat(&app_handle, role_id).await
 }
