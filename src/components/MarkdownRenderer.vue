@@ -48,6 +48,7 @@ const renderedContent = computed(() => {
 .markdown-content {
     line-height: 1.6;
     color: #333;
+    min-width: 0;
 }
 
 .markdown-content :deep(h1),
@@ -86,6 +87,8 @@ const renderedContent = computed(() => {
     border-radius: 3px;
     font-family: 'Courier New', monospace;
     font-size: 0.9em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .markdown-content :deep(pre) {
@@ -93,7 +96,11 @@ const renderedContent = computed(() => {
     border: 1px solid #d1d9e0;
     border-radius: 6px;
     padding: 1em;
+    max-width: 100%;
     overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     margin-bottom: 1em;
 }
 
@@ -101,8 +108,12 @@ const renderedContent = computed(() => {
     background-color: transparent;
     padding: 0;
     border-radius: 0;
+    display: block;
     font-size: 0.9em;
     line-height: 1.45;
+    white-space: inherit;
+    overflow-wrap: inherit;
+    word-break: inherit;
 }
 
 .markdown-content :deep(blockquote) {

@@ -1,6 +1,6 @@
 <template>
     <div
-        class="max-w-[80%] px-4 py-2 rounded-lg group relative"
+        class="max-w-[80%] min-w-0 px-4 py-2 rounded-lg group relative"
         :class="
             role === 'user'
                 ? 'bg-blue-500 text-white rounded-br-sm'

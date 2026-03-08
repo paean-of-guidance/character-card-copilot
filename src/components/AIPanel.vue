@@ -282,11 +282,39 @@ async function initializeChatHistory() {
     }
 }
 
+async function ensureInitialCharacterSessionLoaded() {
+    const characterId = getCurrentCharacterId();
+
+    if (!characterId) {
+        devWarn("无法获取角色UUID，跳过初始化角色会话");
+        return;
+    }
+
+    isLoadingFromBackend.value = true;
+
+    try {
+        await aiStore.ensureCharacterSession(characterId);
+    } catch (error) {
+        console.error("初始化角色会话失败，回退到直接加载聊天历史:", error);
+        isLoadingFromBackend.value = false;
+        await initializeChatHistory();
+        return;
+    }
+
+    isLoadingFromBackend.value = false;
+}
+
 // 监听角色数据变化
 watch(
     () => props.characterData?.name,
     async (newName, oldName) => {
-        // 只在真正切换角色时才重新加载（跳过初始加载，由 onMounted 处理）
+        if (newName && !oldName) {
+            devLog(`角色初始化: ${newName}`);
+            await ensureInitialCharacterSessionLoaded();
+            return;
+        }
+
+        // 只在真正切换角色时才重新加载
         if (newName && oldName && newName !== oldName) {
             devLog(`角色切换: ${oldName} -> ${newName}`);
 
@@ -738,6 +766,8 @@ watch(commandAvailabilitySignature, (newValue, oldValue) => {
 });
 
 onMounted(async () => {
+    await setupListeners();
+
     await Promise.all([loadApiConfigs(), loadAIRoles()]);
 
     // 初始化命令系统
@@ -764,17 +794,16 @@ onMounted(async () => {
         }
     }
 
-    // 初始化后端事件监听器（必须先完成，才能接收后续事件）
-    await setupListeners();
-
     // 事件监听器初始化完成后，检查是否需要重新加载会话
-    // 只在 store 中有数据但后端会话已失效时才重新加载
     if (props.characterData?.name && characterId) {
         const storedHistory = chatStore.getChatHistory(characterId);
+
         if (chatStore.isBackendSessionActive && storedHistory.length > 0) {
             devLog(`🔄 组件重新挂载，后端会话已存在，跳过重复加载`);
             aiStore.updateSessionState(characterId, true);
             // 不重新加载，使用 store 中的数据即可
+        } else if (storedHistory.length === 0) {
+            await ensureInitialCharacterSessionLoaded();
         }
     }
 
@@ -811,13 +840,13 @@ onUnmounted(() => {
         v-if="visible"
         class="card flex w-[min(50%,42rem)] min-w-[24rem] max-w-[42rem] flex-shrink-0 rounded-[28px] border border-white/70 bg-white/78 p-4 shadow-[0_22px_55px_rgba(148,163,184,0.22)] backdrop-blur-xl lg:p-5"
     >
-        <div class="flex h-full min-h-0 flex-col gap-4">
+        <div class="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
             <AIPanelHeader @toggle="togglePanel" />
 
             <!-- 对话消息区域 -->
             <div
                 ref="chatMessagesRef"
-                class="flex-1 overflow-y-auto rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95)_0%,_rgba(241,245,249,0.92)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
+                class="flex-1 min-w-0 overflow-y-auto rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95)_0%,_rgba(241,245,249,0.92)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
             >
                 <AIPanelEmptyState v-if="messages.length === 0" />
 
