@@ -1,18 +1,18 @@
 <template>
     <div class="space-y-3">
         <!-- 搜索框和操作按钮 -->
-        <div class="flex gap-2">
+        <div class="flex gap-2 rounded-2xl border border-white/60 bg-white/70 p-3 shadow-[0_4px_12px_rgba(148,163,184,0.08)] backdrop-blur">
             <!-- 搜索输入框 -->
             <div class="flex-1 relative">
                 <input
                     v-model="searchText"
                     type="text"
-                    class="w-full border border-gray-200 rounded-lg px-4 py-3 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="搜索条目（支持搜索名称、关键词、内容、备注）"
+                    class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                    placeholder="搜索条目（名称、关键词、内容、备注）"
                     @input="handleSearch"
                 />
                 <svg
-                    class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2"
+                    class="w-4 h-4 text-slate-300 absolute left-3.5 top-1/2 transform -translate-y-1/2"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -27,13 +27,13 @@
             </div>
 
             <!-- 筛选按钮 -->
-            <div class="relative flex py-1">
+            <div class="relative flex">
                 <button
-                    class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium py-2 px-3 rounded-lg flex items-center gap-1.5"
+                    class="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
                     @click="showFilters = !showFilters"
                 >
                     <svg
-                        class="w-5 h-5"
+                        class="w-4 h-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -51,49 +51,35 @@
                 <!-- 筛选下拉菜单 -->
                 <div
                     v-if="showFilters"
-                    class="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-4 space-y-3 z-10"
+                    class="absolute right-0 top-full mt-2 w-64 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_12px_32px_rgba(148,163,184,0.20)] backdrop-blur-xl space-y-3 z-10"
                 >
                     <div>
-                        <label
-                            class="text-sm font-semibold text-gray-700 mb-2 block"
-                            >显示状态</label
-                        >
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">显示状态</label>
                         <div class="space-y-2">
-                            <label
-                                class="flex items-center gap-2 cursor-pointer"
-                            >
+                            <label class="flex items-center gap-2 cursor-pointer">
                                 <input
                                     v-model="filterEnabled"
                                     type="checkbox"
-                                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
                                 />
-                                <span class="text-sm text-gray-700"
-                                    >显示启用的条目</span
-                                >
+                                <span class="text-sm text-slate-600">显示启用的条目</span>
                             </label>
-                            <label
-                                class="flex items-center gap-2 cursor-pointer"
-                            >
+                            <label class="flex items-center gap-2 cursor-pointer">
                                 <input
                                     v-model="filterDisabled"
                                     type="checkbox"
-                                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
                                 />
-                                <span class="text-sm text-gray-700"
-                                    >显示禁用的条目</span
-                                >
+                                <span class="text-sm text-slate-600">显示禁用的条目</span>
                             </label>
                         </div>
                     </div>
 
-                    <div class="border-t border-gray-200 pt-3">
-                        <label
-                            class="text-sm font-semibold text-gray-700 mb-2 block"
-                            >排序方式</label
-                        >
+                    <div class="border-t border-slate-100 pt-3">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">排序方式</label>
                         <select
                             v-model="sortBy"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
                             @change="handleSortChange"
                         >
                             <option value="insertion_order">插入顺序</option>
@@ -103,13 +89,10 @@
                     </div>
 
                     <div>
-                        <label
-                            class="text-sm font-semibold text-gray-700 mb-2 block"
-                            >排序方向</label
-                        >
+                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">排序方向</label>
                         <select
                             v-model="sortOrder"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
                             @change="handleSortChange"
                         >
                             <option value="asc">升序</option>
@@ -117,9 +100,9 @@
                         </select>
                     </div>
 
-                    <div class="border-t border-gray-200 pt-3">
+                    <div class="border-t border-slate-100 pt-3">
                         <button
-                            class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1.5 px-3 rounded-lg text-sm"
+                            class="w-full rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2 px-3 text-sm transition-colors"
                             @click="resetFilters"
                         >
                             重置筛选
@@ -130,7 +113,7 @@
 
             <!-- 新建条目按钮 -->
             <button
-                class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-medium my-1 px-3 rounded-full flex items-center gap-1.5"
+                class="glass-btn glass-btn--primary"
                 @click="$emit('create')"
             >
                 <svg
@@ -146,40 +129,8 @@
                         d="M12 4v16m8-8H4"
                     />
                 </svg>
-                新建条目
+                新建
             </button>
-        </div>
-
-        <!-- 统计信息 -->
-        <div class="bg-gray-100 rounded-lg p-4">
-            <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center gap-4">
-                    <span class="text-gray-600">
-                        共
-                        <span class="font-bold text-gray-900">{{
-                            statistics.total
-                        }}</span>
-                        个条目
-                    </span>
-                    <span class="text-green-600">
-                        启用:
-                        <span class="font-bold">{{ statistics.enabled }}</span>
-                    </span>
-                    <span class="text-gray-500">
-                        禁用:
-                        <span class="font-bold">{{ statistics.disabled }}</span>
-                    </span>
-                </div>
-                <div
-                    v-if="filteredCount !== statistics.total"
-                    class="text-gray-600"
-                >
-                    筛选结果:
-                    <span class="font-bold text-blue-600">{{
-                        filteredCount
-                    }}</span>
-                </div>
-            </div>
         </div>
     </div>
 </template>

@@ -15,7 +15,7 @@ function onToggle() {
 <template>
     <button
         @click="onToggle"
-        class="bg-purple-500 hover:bg-purple-700 text-white text-sm font-medium py-1.5 px-3 rounded-full flex items-center gap-1.5"
+        class="glass-btn glass-btn--primary"
     >
         <svg
             class="w-3.5 h-3.5"

@@ -1,6 +1,6 @@
 [package]
 name = "character-card-copilot"
-version = "0.7.0"
+version = "0.8.2"
 description = "A Tauri App"
 authors = ["you"]
 license = "Apache-2.0"

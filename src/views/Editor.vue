@@ -659,12 +659,12 @@ onUnmounted(async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-5rem)] bg-gray-50 w-full px-1 py-2">
-        <div class="flex h-full w-full gap-2">
+    <div class="h-[calc(100vh-5rem)] w-full px-2 py-2 bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)]">
+        <div class="flex h-full w-full gap-3">
             <!-- 左侧：角色信息显示 -->
             <div
                 ref="editorContainerRef"
-                class="card rounded-xl bg-white p-3 overflow-y-auto shadow-2xl"
+                class="rounded-[24px] border border-white/70 bg-white/75 p-4 overflow-y-auto shadow-[0_16px_40px_rgba(148,163,184,0.14)] backdrop-blur-xl"
                 :class="aiPanelVisible ? 'w-[70%]' : 'w-full'"
             >
                 <!-- 加载状态 -->
@@ -677,11 +677,11 @@ onUnmounted(async () => {
 
                 <div v-else>
                     <!-- 上方：角色卡预览 + 角色名 -->
-                    <div class="mb-6">
+                    <div class="mb-5">
                         <div class="flex items-center gap-4 mb-4">
                             <!-- 角色卡预览 -->
                             <div
-                                class="w-24 h-24 rounded-lg flex items-center justify-center shadow-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity relative"
+                                class="w-20 h-20 rounded-2xl flex items-center justify-center shadow-[0_8px_20px_rgba(148,163,184,0.18)] overflow-hidden cursor-pointer hover:opacity-80 transition-opacity relative border border-white/60"
                                 @click="handleAvatarClick"
                                 :class="isUploading ? 'opacity-50' : ''"
                             >
@@ -735,7 +735,7 @@ onUnmounted(async () => {
                                         )
                                     "
                                     type="text"
-                                    class="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 text-lg font-medium"
+                                    class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2 text-lg font-medium text-slate-800 placeholder-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
                                     placeholder="请输入角色名称"
                                 />
                             </div>
@@ -743,42 +743,16 @@ onUnmounted(async () => {
                     </div>
 
                     <!-- 操作按钮区域 -->
-                    <div class="flex gap-2 mb-6">
-                        <button
-                            @click="deleteCharacter"
-                            class="bg-red-500 hover:bg-red-700 text-white text-sm font-medium py-1.5 px-3 rounded-full flex items-center gap-1.5"
-                        >
-                            <svg
-                                class="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
+                    <div class="flex gap-3 mb-5 items-center">
+                        <button class="glass-btn glass-btn--danger" @click="deleteCharacter">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                             删除角色
                         </button>
-                        <button
-                            @click="exportCharacter"
-                            class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-3 rounded-full flex items-center gap-1.5"
-                        >
-                            <svg
-                                class="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 11l3 3m0 0l3-3m-3 3V8"
-                                />
+                        <button class="glass-btn glass-btn--primary" @click="exportCharacter">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 11l3 3m0 0l3-3m-3 3V8" />
                             </svg>
                             导出角色
                         </button>

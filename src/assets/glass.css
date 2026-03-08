@@ -1,0 +1,82 @@
+/* ============================================
+   Glass Design System — 共享玻璃态样式
+   ============================================ */
+
+/* --- 玻璃按钮 --- */
+.glass-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 999px;
+    cursor: pointer;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.35) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.45) inset,
+        0 1px 3px rgba(255,255,255,0.3) inset,
+        0 4px 16px rgba(148,163,184,0.18);
+    transition: all 0.2s ease;
+}
+.glass-btn:hover {
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.6) inset,
+        0 1px 4px rgba(255,255,255,0.4) inset,
+        0 6px 24px rgba(148,163,184,0.25);
+    background: linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 100%);
+}
+.glass-btn:active {
+    transform: scale(0.96);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.4) inset,
+        0 2px 8px rgba(148,163,184,0.2);
+}
+
+/* 色调变体 */
+.glass-btn--danger { color: #dc2626; }
+.glass-btn--danger:hover {
+    background: linear-gradient(135deg, rgba(254,226,226,0.7) 0%, rgba(255,255,255,0.45) 100%);
+    border-color: rgba(252,165,165,0.5);
+}
+.glass-btn--primary { color: #2563eb; }
+.glass-btn--primary:hover {
+    background: linear-gradient(135deg, rgba(219,234,254,0.7) 0%, rgba(255,255,255,0.45) 100%);
+    border-color: rgba(147,197,253,0.5);
+}
+.glass-btn--neutral { color: #475569; }
+.glass-btn--neutral:hover {
+    background: linear-gradient(135deg, rgba(241,245,249,0.7) 0%, rgba(255,255,255,0.45) 100%);
+    border-color: rgba(203,213,225,0.5);
+}
+
+/* --- 玻璃芯片（状态指示器/选择器） --- */
+.glass-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.35) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.45) inset,
+        0 1px 3px rgba(255,255,255,0.3) inset,
+        0 4px 16px rgba(148,163,184,0.18);
+    padding: 0.35rem 0.8rem;
+    transition: all 0.2s ease;
+}
+.glass-chip:hover {
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.6) inset,
+        0 1px 4px rgba(255,255,255,0.4) inset,
+        0 6px 24px rgba(148,163,184,0.25);
+    background: linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 100%);
+}

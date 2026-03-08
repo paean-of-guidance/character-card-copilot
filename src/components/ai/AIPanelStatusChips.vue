@@ -29,7 +29,7 @@ function handleApiChange(event: Event) {
 
 <template>
     <div class="flex flex-wrap items-center gap-2 px-1">
-        <label class="chip-select chip-select-role">
+        <label class="glass-chip chip-select chip-select-role">
             <span class="chip-label">角色</span>
             <select :value="selectedRole" class="chip-native-select" :disabled="aiRoles.length === 0" @change="handleRoleChange">
                 <option value="" disabled>选择AI角色</option>
@@ -40,7 +40,7 @@ function handleApiChange(event: Event) {
             <span class="chip-value">{{ currentRoleName || '未选择' }}</span>
         </label>
 
-        <label class="chip-select chip-select-api">
+        <label class="glass-chip chip-select chip-select-api">
             <span class="chip-label">API</span>
             <select :value="selectedApi" class="chip-native-select" :disabled="apiConfigs.length === 0" @change="handleApiChange">
                 <option value="" disabled>选择API配置</option>
@@ -51,7 +51,7 @@ function handleApiChange(event: Event) {
             <span class="chip-value">{{ selectedApi || '未配置' }}</span>
         </label>
 
-        <div class="info-chip">
+        <div class="glass-chip info-chip">
             <span class="chip-label">上下文</span>
             <span class="chip-value">{{ contextUsageLabel }}</span>
         </div>
@@ -59,23 +59,6 @@ function handleApiChange(event: Event) {
 </template>
 
 <style scoped>
-.chip-select,
-.info-chip {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-height: 2.2rem;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.5) 100%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        0 8px 18px rgba(148, 163, 184, 0.1);
-    padding: 0.35rem 0.8rem;
-    backdrop-filter: blur(16px);
-}
-
 .chip-select-role {
     min-width: 11rem;
 }
