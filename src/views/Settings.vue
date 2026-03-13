@@ -130,8 +130,28 @@ async function handleSelectApi(api: ApiConfig) {
   apiStore.selectApi(api.profile)
 }
 
-function patchDraftField(field: keyof ApiConfig, value: string | boolean) {
+function patchDraftField(field: keyof ApiConfig, value: string | boolean | number) {
   apiStore.patchDraft({ [field]: value } as Partial<ApiConfig>)
+}
+
+function handleModelMetaUpdate(modelMeta: { max_tokens?: number; context_window?: number } | null) {
+  if (!modelMeta) {
+    return
+  }
+
+  const patch: Partial<ApiConfig> = {}
+
+  if (typeof modelMeta.max_tokens === 'number') {
+    patch.max_tokens = modelMeta.max_tokens
+  }
+
+  if (typeof modelMeta.context_window === 'number') {
+    patch.context_window = modelMeta.context_window
+  }
+
+  if (Object.keys(patch).length > 0) {
+    apiStore.patchDraft(patch)
+  }
 }
 
 async function ensureDraftSaved() {
@@ -430,7 +450,36 @@ function handleApiCreated(api: ApiConfig) {
                     :api-config="draft"
                     :model-value="draft.model"
                     @update:modelValue="patchDraftField('model', $event)"
+                    @update:modelMeta="handleModelMetaUpdate"
                   />
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label class="block text-sm">
+                    <span class="mb-2 block font-medium text-gray-700">Context Window</span>
+                    <input
+                      :value="draft.context_window"
+                      type="number"
+                      min="1"
+                      step="1"
+                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                      @input="patchDraftField('context_window', Number(($event.target as HTMLInputElement).value) || 65534)"
+                    />
+                    <p class="mt-2 text-xs text-gray-500">模型列表未返回时默认使用 65534，你也可以手动覆盖。</p>
+                  </label>
+
+                  <label class="block text-sm">
+                    <span class="mb-2 block font-medium text-gray-700">Max Tokens</span>
+                    <input
+                      :value="draft.max_tokens"
+                      type="number"
+                      min="1"
+                      step="1"
+                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                      @input="patchDraftField('max_tokens', Number(($event.target as HTMLInputElement).value) || 8192)"
+                    />
+                    <p class="mt-2 text-xs text-gray-500">模型列表未返回时默认使用 8192，你也可以手动覆盖。</p>
+                  </label>
                 </div>
               </div>
             </div>

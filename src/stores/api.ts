@@ -205,6 +205,8 @@ export const useApiStore = defineStore('api', () => {
         base_url: draft.value.base_url,
         api_key: draft.value.api_key,
         model: draft.value.model,
+        max_tokens: draft.value.max_tokens,
+        context_window: draft.value.context_window,
         default: draft.value.default,
         enabled: draft.value.enabled,
       }

@@ -13,6 +13,10 @@ export interface ApiConfig {
   api_key: string;
   /** 使用的模型 */
   model: string;
+  /** 模型最大输出 Token */
+  max_tokens: number;
+  /** 模型上下文窗口 */
+  context_window: number;
   /** 是否为默认配置 */
   default: boolean;
   /** 是否启用 */
@@ -35,6 +39,8 @@ export interface CreateApiRequest {
   base_url?: string;
   api_key?: string;
   model?: string;
+  max_tokens?: number;
+  context_window?: number;
   default?: boolean;
   enabled?: boolean;
 }
@@ -63,6 +69,8 @@ export interface ModelInfo {
   object: string;
   created?: number;
   owned_by?: string;
+  max_tokens?: number;
+  context_window?: number;
 }
 
 /**

@@ -65,6 +65,17 @@ impl CharacterSession {
         Ok(session)
     }
 
+    /// 从磁盘刷新角色数据，保留当前会话历史与状态。
+    pub fn refresh_character_data(&mut self, app_handle: &AppHandle) -> Result<(), String> {
+        let character_data =
+            crate::character_storage::CharacterStorage::get_character_by_uuid(app_handle, &self.uuid)?
+                .ok_or_else(|| format!("角色 {} 不存在", self.uuid))?;
+
+        self.character_data = character_data;
+        self.last_active = Utc::now();
+        Ok(())
+    }
+
     /// 添加用户消息到历史记录
     pub fn add_user_message(&mut self, content: String) -> ChatMessage {
         let message = ChatMessage {
@@ -266,7 +277,8 @@ impl SessionManager {
             .map_err(|e| format!("锁定会话失败: {}", e))?;
 
         // 如果会话已存在，返回现有会话
-        if let Some(session) = sessions.get(&uuid) {
+        if let Some(session) = sessions.get_mut(&uuid) {
+            session.refresh_character_data(app_handle)?;
             return Ok(session.clone());
         }
 

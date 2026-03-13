@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  'update:modelMeta': [value: Pick<ModelInfo, 'max_tokens' | 'context_window'> | null]
 }>()
 
 const apiStore = useApiStore()
@@ -26,6 +27,18 @@ const selectedModel = computed({
   get: () => props.modelValue ?? '',
   set: (value: string) => emit('update:modelValue', value),
 })
+
+function emitModelMeta(model: ModelInfo | null) {
+  if (!model) {
+    emit('update:modelMeta', null)
+    return
+  }
+
+  emit('update:modelMeta', {
+    max_tokens: model.max_tokens,
+    context_window: model.context_window,
+  })
+}
 
 const displayModels = computed(() => {
   let modelList = models.value
@@ -56,6 +69,7 @@ async function loadModels() {
 
   try {
     models.value = await apiStore.fetchModels(props.apiConfig)
+    emitModelMeta(models.value.find((model) => model.id === selectedModel.value) ?? null)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '获取模型失败'
     console.error('获取模型失败:', err)
@@ -75,11 +89,13 @@ function handleInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   searchQuery.value = value
   selectedModel.value = value
+  emitModelMeta(models.value.find((model) => model.id === value) ?? null)
   openDropdown()
 }
 
-function selectModel(modelId: string) {
-  selectedModel.value = modelId
+function selectModel(model: ModelInfo) {
+  selectedModel.value = model.id
+  emitModelMeta(model)
   searchQuery.value = ''
   isOpen.value = false
 }
@@ -147,7 +163,7 @@ onBeforeUnmount(() => {
           type="button"
           class="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-gray-50"
           :class="selectedModel === model.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'"
-          @click="selectModel(model.id)"
+          @click="selectModel(model)"
         >
           <span class="truncate font-medium">{{ model.id }}</span>
           <span v-if="model.owned_by" class="truncate text-xs text-gray-400">{{ model.owned_by }}</span>

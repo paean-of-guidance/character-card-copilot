@@ -182,6 +182,8 @@ export async function copyApiConfig(api: ApiConfig): Promise<ApiConfig> {
     base_url: api.base_url,
     api_key: api.api_key,
     model: api.model,
+    max_tokens: api.max_tokens,
+    context_window: api.context_window,
     default: false, // 复制的配置不能是默认
     enabled: api.enabled, // 保持原有的启用状态
   };

@@ -1,6 +1,6 @@
 use super::file_utils::FileUtils;
 use crate::ai_chat::{AIChatService, ChatCompletionRequest, ChatMessage, MessageRole};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +38,28 @@ impl ApiProvider {
     }
 }
 
+fn default_api_max_tokens() -> u32 {
+    8192
+}
+
+fn default_context_window() -> u32 {
+    65534
+}
+
+fn deserialize_max_tokens_with_default<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<u32>::deserialize(deserializer)?.unwrap_or_else(default_api_max_tokens))
+}
+
+fn deserialize_context_window_with_default<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<u32>::deserialize(deserializer)?.unwrap_or_else(default_context_window))
+}
+
 /// API配置结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
@@ -51,6 +73,16 @@ pub struct ApiConfig {
     #[serde(alias = "key")]
     pub api_key: String,
     pub model: String,
+    #[serde(
+        default = "default_api_max_tokens",
+        deserialize_with = "deserialize_max_tokens_with_default"
+    )]
+    pub max_tokens: u32,
+    #[serde(
+        default = "default_context_window",
+        deserialize_with = "deserialize_context_window_with_default"
+    )]
+    pub context_window: u32,
     pub default: bool,
     pub enabled: bool,
 }
@@ -69,6 +101,8 @@ pub struct CreateApiRequest {
     #[serde(alias = "key")]
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub context_window: Option<u32>,
     pub default: Option<bool>,
     pub enabled: Option<bool>,
 }
@@ -84,6 +118,8 @@ pub struct UpdateApiRequest {
     #[serde(alias = "key")]
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub context_window: Option<u32>,
     pub default: Option<bool>,
     pub enabled: Option<bool>,
 }
@@ -103,6 +139,10 @@ pub struct ModelInfo {
     pub object: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owned_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
 }
 
 fn normalize_profile(profile: &str) -> String {
@@ -154,6 +194,29 @@ fn normalize_base_url(provider: ApiProvider, base_url: String) -> String {
     }
 }
 
+fn value_to_u32(value: &serde_json::Value) -> Option<u32> {
+    value.as_u64().and_then(|raw| u32::try_from(raw).ok())
+}
+
+fn extract_model_limit(model: &serde_json::Value, candidate_keys: &[&str]) -> Option<u32> {
+    match model {
+        serde_json::Value::Object(map) => {
+            for key in candidate_keys {
+                if let Some(limit) = map.get(*key).and_then(value_to_u32) {
+                    return Some(limit);
+                }
+            }
+
+            map.values()
+                .find_map(|value| extract_model_limit(value, candidate_keys))
+        }
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|value| extract_model_limit(value, candidate_keys)),
+        _ => None,
+    }
+}
+
 fn normalize_test_reply(content: &str) -> String {
     content
         .trim()
@@ -179,6 +242,8 @@ fn migrate_config(config: ApiConfig) -> ApiConfig {
         base_url: normalize_base_url(provider, config.base_url),
         api_key: config.api_key.trim().to_string(),
         model: config.model.trim().to_string(),
+        max_tokens: config.max_tokens,
+        context_window: config.context_window,
         default: config.default,
         enabled: config.enabled,
     }
@@ -213,6 +278,8 @@ fn build_new_config(
         base_url: normalize_base_url(provider, normalize_optional_text(request.base_url)),
         api_key: normalize_optional_text(request.api_key),
         model: normalize_optional_text(request.model),
+        max_tokens: request.max_tokens.unwrap_or_else(default_api_max_tokens),
+        context_window: request.context_window.unwrap_or_else(default_context_window),
         default,
         enabled,
     })
@@ -249,6 +316,12 @@ fn update_config_in_configs(
     }
     if let Some(model) = request.model {
         updated_config.model = model.trim().to_string();
+    }
+    if let Some(max_tokens) = request.max_tokens {
+        updated_config.max_tokens = max_tokens;
+    }
+    if let Some(context_window) = request.context_window {
+        updated_config.context_window = context_window;
     }
     if let Some(enabled) = request.enabled {
         updated_config.enabled = enabled;
@@ -569,11 +642,21 @@ impl ApiConfigService {
                                         ApiProvider::Claude => Some("anthropic".to_string()),
                                         _ => None,
                                     });
+                                let max_tokens = extract_model_limit(
+                                    model,
+                                    &["max_output_tokens", "max_completion_tokens", "max_tokens", "output_token_limit"],
+                                );
+                                let context_window = extract_model_limit(
+                                    model,
+                                    &["context_window", "contextWindow", "input_token_limit", "inputTokenLimit"],
+                                );
 
                                 Some(ModelInfo {
                                     id,
                                     object,
                                     owned_by,
+                                    max_tokens,
+                                    context_window,
                                 })
                             })
                             .collect::<Vec<_>>()
@@ -600,6 +683,14 @@ impl ApiConfigService {
                                 id,
                                 object: "model".to_string(),
                                 owned_by: Some("google".to_string()),
+                                max_tokens: extract_model_limit(
+                                    model,
+                                    &["outputTokenLimit", "output_token_limit", "maxOutputTokens", "max_output_tokens"],
+                                ),
+                                context_window: extract_model_limit(
+                                    model,
+                                    &["inputTokenLimit", "input_token_limit", "contextWindow", "context_window"],
+                                ),
                             })
                         })
                         .collect::<Vec<_>>()
@@ -624,6 +715,8 @@ mod tests {
                 base_url: "https://api.openai.com/v1".to_string(),
                 api_key: "key-1".to_string(),
                 model: "gpt-4.1".to_string(),
+                max_tokens: 16_384,
+                context_window: 128_000,
                 default: true,
                 enabled: true,
             },
@@ -634,6 +727,8 @@ mod tests {
                 base_url: "https://api.anthropic.com".to_string(),
                 api_key: "key-2".to_string(),
                 model: "claude-3-5-sonnet-latest".to_string(),
+                max_tokens: 8_192,
+                context_window: 200_000,
                 default: false,
                 enabled: true,
             },
@@ -651,6 +746,8 @@ mod tests {
                 base_url: Some(" https://generativelanguage.googleapis.com/v1beta ".to_string()),
                 api_key: Some(" key-3 ".to_string()),
                 model: Some(" gemini-2.0-flash ".to_string()),
+                max_tokens: Some(8_192),
+                context_window: Some(1_048_576),
                 default: Some(true),
                 enabled: Some(false),
             },
@@ -671,12 +768,64 @@ mod tests {
                 base_url: None,
                 api_key: None,
                 model: None,
+                max_tokens: None,
+                context_window: None,
                 default: None,
                 enabled: None,
             },
         );
 
         assert_eq!(result.unwrap_err(), "API配置 'Backup' 已存在");
+    }
+
+    #[test]
+    fn create_config_uses_conservative_model_limits_by_default() {
+        let mut configs = sample_configs();
+
+        let created = build_new_config(
+            &mut configs,
+            CreateApiRequest {
+                profile: "Draft".to_string(),
+                provider: Some(ApiProvider::OpenAiCompatible),
+                base_url: Some("https://api.example.com/v1".to_string()),
+                api_key: Some("key-3".to_string()),
+                model: Some("custom-model".to_string()),
+                max_tokens: None,
+                context_window: None,
+                default: Some(false),
+                enabled: Some(false),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(created.max_tokens, default_api_max_tokens());
+        assert_eq!(created.context_window, default_context_window());
+    }
+
+    #[test]
+    fn update_config_updates_model_limits() {
+        let mut configs = sample_configs();
+
+        update_config_in_configs(
+            &mut configs,
+            UpdateApiRequest {
+                profile: "Primary".to_string(),
+                original_profile: "Primary".to_string(),
+                provider: None,
+                base_url: None,
+                api_key: None,
+                model: Some("custom-model".to_string()),
+                max_tokens: Some(12_288),
+                context_window: Some(131_072),
+                default: None,
+                enabled: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(configs[0].model, "custom-model");
+        assert_eq!(configs[0].max_tokens, 12_288);
+        assert_eq!(configs[0].context_window, 131_072);
     }
 
     #[test]
@@ -717,7 +866,29 @@ mod tests {
         assert_eq!(migrated.provider, ApiProvider::OpenAiCompatible);
         assert_eq!(migrated.base_url, "https://api.openai.com/v1");
         assert_eq!(migrated.api_key, "sk-legacy");
+        assert_eq!(migrated.max_tokens, default_api_max_tokens());
+        assert_eq!(migrated.context_window, default_context_window());
         assert!(migrated.provider_explicit);
+    }
+
+    #[test]
+    fn migration_maps_null_model_limits_to_defaults() {
+        let legacy_json = serde_json::json!({
+            "profile": "Legacy Null",
+            "endpoint": "https://api.openai.com/v1/",
+            "key": "sk-null",
+            "model": "gpt-4.1-mini",
+            "max_tokens": null,
+            "context_window": null,
+            "default": false,
+            "enabled": true
+        });
+
+        let config: ApiConfig = serde_json::from_value(legacy_json).unwrap();
+        let migrated = migrate_config(config);
+
+        assert_eq!(migrated.max_tokens, default_api_max_tokens());
+        assert_eq!(migrated.context_window, default_context_window());
     }
 
     #[test]
@@ -729,6 +900,8 @@ mod tests {
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: "sk-live".to_string(),
             model: "gpt-5-mini".to_string(),
+            max_tokens: 4_096,
+            context_window: 128_000,
             default: false,
             enabled: true,
         };

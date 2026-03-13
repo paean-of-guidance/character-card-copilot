@@ -107,6 +107,16 @@ const groupedMessages = useMessageGrouping(messages);
 const hasStreamingAssistant = computed(() =>
     messages.value.some((message) => message.role === 'assistant' && message.isStreaming),
 );
+const lastRenderableMessageId = computed(() => {
+    for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+        const message = messages.value[index];
+        if (message.role === "user" || message.role === "assistant") {
+            return message.id;
+        }
+    }
+
+    return "";
+});
 const currentRoleName = computed(() => currentRoleConfig.value?.name || selectedRole.value || '未选择');
 const contextUsageLabel = computed(() => {
     const budgetUtilization = Number(lastTokenStats.value?.budget_utilization);
@@ -542,6 +552,14 @@ async function regenerateResponse() {
 
 // 继续生成回复（当最后一条是用户消息时）
 async function continueFromUserMessage() {
+    const lastMessage = messages.value[messages.value.length - 1];
+    if (!lastMessage || lastMessage.role !== "user") {
+        const message = "最后一条消息不是用户消息，无法继续对话";
+        devWarn(message);
+        showErrorToast(message, "继续失败");
+        return;
+    }
+
     try {
         devLog("🔄 触发AI生成回复...");
 
@@ -550,6 +568,7 @@ async function continueFromUserMessage() {
 
         devLog("✅ AI回复生成完成");
     } catch (error) {
+        showErrorToast(`${error}`, "生成AI回复失败");
         console.error("生成AI回复失败:", error);
     }
 }
@@ -852,7 +871,7 @@ onUnmounted(() => {
 
                 <div v-else class="space-y-4">
                     <div
-                        v-for="(group, groupIndex) in groupedMessages"
+                        v-for="group in groupedMessages"
                         :key="
                             group.type === 'normal'
                                 ? group.message.id
@@ -886,9 +905,7 @@ onUnmounted(() => {
                             :timestamp="group.message.timestamp"
                             :is-editing="group.message.isEditing"
                             :loading="group.message.isStreaming || false"
-                            :is-last-message="
-                                groupIndex === groupedMessages.length - 1
-                            "
+                            :is-last-message="group.message.id === lastRenderableMessageId"
                             @continue="continueFromUserMessage"
                             @regenerate="regenerateResponse"
                             @start-edit="handleStartEdit(group.message.id)"
