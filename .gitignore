@@ -26,3 +26,8 @@ dist-ssr
 .vscode
 .claude
 nul
+
+# Arch packaging outputs
+packaging/arch/*.pkg.tar.zst
+packaging/arch/pkg/
+packaging/arch/src/

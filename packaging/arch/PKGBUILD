@@ -1,0 +1,67 @@
+pkgname=character-card-copilot
+pkgver=0.8.2
+pkgrel=1
+pkgdesc='AI-powered TavernCard V2 character card editor built with Tauri'
+arch=('x86_64' 'aarch64')
+url='https://github.com/paean-of-guidance/character-card-copilot'
+license=('Apache-2.0')
+depends=('webkit2gtk-4.1')
+makedepends=('nodejs' 'rust')
+options=('!debug')
+source=()
+sha256sums=()
+
+prepare() {
+  local project_root="$startdir/../.."
+  local worktree="$srcdir/$pkgname-$pkgver"
+
+  rm -rf "$worktree"
+  mkdir -p "$worktree"
+
+  bsdtar \
+    --exclude-vcs \
+    --exclude='./dist' \
+    --exclude='./node_modules' \
+    --exclude='./packaging/arch/pkg' \
+    --exclude='./packaging/arch/src' \
+    --exclude='./src-tauri/target' \
+    -cf - \
+    -C "$project_root" . | bsdtar -xf - -C "$worktree"
+}
+
+build() {
+  local worktree="$srcdir/$pkgname-$pkgver"
+
+  export CARGO_HOME="$srcdir/cargo-home"
+  export npm_config_cache="$srcdir/npm-cache"
+  export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=bfd"
+
+  cd "$worktree"
+  corepack pnpm@9 install --frozen-lockfile
+  corepack pnpm@9 build
+  cargo build --manifest-path src-tauri/Cargo.toml --release --bins --features tauri/custom-protocol
+}
+
+package() {
+  local worktree="$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 \
+    "$worktree/src-tauri/target/release/character-card-copilot" \
+    "$pkgdir/usr/bin/character-card-copilot"
+
+  install -Dm644 \
+    "$worktree/packaging/linux/character-card-copilot.desktop" \
+    "$pkgdir/usr/share/applications/character-card-copilot.desktop"
+
+  install -Dm644 \
+    "$worktree/src-tauri/icons/copilot-32x32.png" \
+    "$pkgdir/usr/share/icons/hicolor/32x32/apps/character-card-copilot.png"
+
+  install -Dm644 \
+    "$worktree/src-tauri/icons/copilot-128x128.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/character-card-copilot.png"
+
+  install -Dm644 \
+    "$worktree/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

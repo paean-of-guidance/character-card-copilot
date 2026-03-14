@@ -1,0 +1,14 @@
+pkgbase = character-card-copilot
+	pkgdesc = AI-powered TavernCard V2 character card editor built with Tauri
+	pkgver = 0.8.2
+	pkgrel = 1
+	url = https://github.com/paean-of-guidance/character-card-copilot
+	arch = x86_64
+	arch = aarch64
+	license = Apache-2.0
+	makedepends = nodejs
+	makedepends = rust
+	depends = webkit2gtk-4.1
+	options = !debug
+
+pkgname = character-card-copilot

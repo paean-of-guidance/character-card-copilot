@@ -85,6 +85,36 @@ pnpm check
 pnpm tauri build
 ```
 
+为兼容 Arch Linux 上 `aws-lc-rs` 与默认 `lld` 的链接问题，仓库额外提供了 `.cargo/config.toml`，在本地 Cargo 构建路径上固定使用 GNU `bfd` 链接器。
+
+### 在 Arch Linux 上安装到系统
+仓库提供了 `packaging/arch/PKGBUILD`，可以直接构建并安装为本地包：
+
+```bash
+cd packaging/arch
+makepkg -si
+```
+
+构建完成后也可以手动安装生成的包文件：
+
+```bash
+pacman -U ./packaging/arch/character-card-copilot-0.8.2-1-x86_64.pkg.tar.zst
+```
+
+如果你更习惯 `paru`，也可以直接在仓库根目录执行：
+
+```bash
+paru -Bi ./packaging/arch
+```
+
+或者安装已经构建好的包文件：
+
+```bash
+paru -U ./packaging/arch/character-card-copilot-0.8.2-1-x86_64.pkg.tar.zst
+```
+
+安装后会自动写入应用菜单条目，可以直接从桌面启动器搜索 `Character Card Copilot`。
+
 ---
 
 ## 📄 开源协议

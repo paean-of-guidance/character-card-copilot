@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Character Card Copilot
+Comment=AI-powered TavernCard V2 character card editor
+Exec=character-card-copilot
+Icon=character-card-copilot
+Terminal=false
+Categories=Utility;
+StartupWMClass=character-card-copilot

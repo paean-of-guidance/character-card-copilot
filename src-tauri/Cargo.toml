@@ -41,6 +41,9 @@ genai = "0.5.3"
 futures-util = "0.3.32"
 regex = "1.12.3"
 
+[patch.crates-io]
+genai = { path = "../vendor/genai" }
+
 [profile.release]
 lto = true
 codegen-units = 1
