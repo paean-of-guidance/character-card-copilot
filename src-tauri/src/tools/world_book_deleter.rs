@@ -3,121 +3,15 @@ use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
 };
-use crate::character_storage::{CharacterStorage, WorldBookEntry};
+use crate::character_storage::CharacterStorage;
+use crate::tools::world_book_shared::{locate_entry, summarize_entry};
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
 /// 世界书条目删除工具
 pub struct DeleteWorldBookEntryTool;
-
-impl DeleteWorldBookEntryTool {
-    fn get_string_parameter<'a>(request: &'a ToolCallRequest, key: &str) -> Option<&'a str> {
-        request.parameters.get(key).and_then(Value::as_str).map(str::trim)
-    }
-
-    fn get_i32_parameter(request: &ToolCallRequest, key: &str) -> Option<i32> {
-        let value = request.parameters.get(key)?;
-
-        if let Some(number) = value.as_i64() {
-            return i32::try_from(number).ok();
-        }
-
-        value
-            .as_str()
-            .and_then(|text| text.trim().parse::<i32>().ok())
-    }
-
-    fn format_entry_summary(entry: &WorldBookEntry) -> String {
-        let entry_id = entry.id.unwrap_or_default();
-        let entry_name = entry.name.as_deref().unwrap_or("<未命名>");
-        let keys = if entry.keys.is_empty() {
-            "<无关键词>".to_string()
-        } else {
-            entry.keys.join(", ")
-        };
-
-        format!("id={entry_id}, name={entry_name}, keys=[{keys}]")
-    }
-
-    fn find_entry_index(entries: &[WorldBookEntry], request: &ToolCallRequest) -> Result<usize, String> {
-        if let Some(entry_id) = Self::get_i32_parameter(request, "entry_id") {
-            return entries
-                .iter()
-                .position(|entry| entry.id == Some(entry_id))
-                .ok_or_else(|| format!("未找到 entry_id 为 {} 的世界书条目", entry_id));
-        }
-
-        if let Some(name) = Self::get_string_parameter(request, "name") {
-            if name.is_empty() {
-                return Err("name 不能为空".to_string());
-            }
-
-            let matched_indexes = entries
-                .iter()
-                .enumerate()
-                .filter(|(_, entry)| {
-                    entry
-                        .name
-                        .as_deref()
-                        .map(|entry_name| entry_name.trim().eq_ignore_ascii_case(name))
-                        .unwrap_or(false)
-                })
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-
-            return match matched_indexes.as_slice() {
-                [index] => Ok(*index),
-                [] => Err(format!("未找到名称为“{}”的世界书条目", name)),
-                _ => {
-                    let candidates = matched_indexes
-                        .iter()
-                        .take(5)
-                        .map(|index| Self::format_entry_summary(&entries[*index]))
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    Err(format!(
-                        "找到多个名称为“{}”的世界书条目，请改用 entry_id 删除。候选：{}",
-                        name, candidates
-                    ))
-                }
-            };
-        }
-
-        if let Some(key) = Self::get_string_parameter(request, "key") {
-            if key.is_empty() {
-                return Err("key 不能为空".to_string());
-            }
-
-            let matched_indexes = entries
-                .iter()
-                .enumerate()
-                .filter(|(_, entry)| entry.keys.iter().any(|entry_key| entry_key.trim().eq_ignore_ascii_case(key)))
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-
-            return match matched_indexes.as_slice() {
-                [index] => Ok(*index),
-                [] => Err(format!("未找到包含关键词“{}”的世界书条目", key)),
-                _ => {
-                    let candidates = matched_indexes
-                        .iter()
-                        .take(5)
-                        .map(|index| Self::format_entry_summary(&entries[*index]))
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    Err(format!(
-                        "找到多个包含关键词“{}”的世界书条目，请改用 entry_id 删除。候选：{}",
-                        key, candidates
-                    ))
-                }
-            };
-        }
-
-        Err("缺少定位参数：请至少提供 entry_id、name 或 key 之一".to_string())
-    }
-}
 
 #[async_trait]
 impl AIToolTrait for DeleteWorldBookEntryTool {
@@ -180,19 +74,22 @@ impl AIToolTrait for DeleteWorldBookEntryTool {
             }
         };
 
-        let entry_index = match Self::find_entry_index(&world_book.entries, request) {
-            Ok(index) => index,
+        let selection = match locate_entry(&world_book.entries, &request.parameters, "删除") {
+            Ok(selection) => selection,
             Err(error) => {
                 return ToolResult {
                     success: false,
-                    data: None,
-                    error: Some(error),
+                    data: Some(json!({
+                        "error_code": error.code,
+                        "details": error.details,
+                    })),
+                    error: Some(error.message),
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 };
             }
         };
 
-        let removed_entry = world_book.entries.remove(entry_index);
+        let removed_entry = world_book.entries.remove(selection.index);
         let removed_entry_id = removed_entry.id.unwrap_or_default();
         let removed_entry_name = removed_entry.name.clone();
         let removed_entry_keys = removed_entry.keys.clone();
@@ -211,17 +108,20 @@ impl AIToolTrait for DeleteWorldBookEntryTool {
                     eprintln!("发送世界书条目删除事件失败: {}", error);
                 }
 
-                ToolResult {
-                    success: true,
-                    data: Some(json!({
-                        "message": "世界书条目删除成功",
-                        "deleted_entry": {
-                            "id": removed_entry_id,
-                            "name": removed_entry.name,
-                            "keys": removed_entry.keys,
-                            "comment": removed_entry.comment,
-                        }
-                    })),
+                        ToolResult {
+                            success: true,
+                            data: Some(json!({
+                                "message": "世界书条目删除成功",
+                                "matched_by": selection.matched_by,
+                                "matched_value": selection.matched_value,
+                                "deleted_entry": {
+                                    "summary": summarize_entry(&removed_entry),
+                                    "id": removed_entry_id,
+                                    "name": removed_entry.name,
+                                    "keys": removed_entry.keys,
+                                    "comment": removed_entry.comment,
+                                }
+                            })),
                     error: None,
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 }

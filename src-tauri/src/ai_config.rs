@@ -21,11 +21,11 @@ fn default_context_role_template() -> String {
 }
 
 fn default_context_task_template() -> String {
-    "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当用户要求局部修改某个字段中的一句话、某个 trait 或某段内容时，优先使用工具(patch_character_field)做唯一命中的局部补丁编辑；只有当用户明确要求重写整个字段时，才使用 edit_character。当用户确认添加 worldbook 条目的时候，使用工具(create_world_book_entry)。当用户明确要求删除某个世界书条目时，优先使用 delete_world_book_entry，并尽量传 entry_id 以避免误删。".to_string()
+    "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当需要局部修改某个字段中的一句话、某个 trait 或某段内容时，优先先读后写：不确定当前文本时使用 read_character_field 或 patch_character_field(dry_run=true) 预览，确认唯一命中后再执行 patch_character_field；只有当用户明确要求重写整个字段时，才使用 edit_character。当处理世界书时，先使用 list_world_book_entries 查看候选，必要时用 read_world_book_entry 读取完整条目；创建使用 create_world_book_entry，更新使用 update_world_book_entry，删除使用 delete_world_book_entry，并尽量传 entry_id 以避免误操作。".to_string()
 }
 
 fn default_context_instructions_template() -> String {
-    "基于用户需求分析现有角色设定，提供建议并调用相应工具。\n始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。\n如果需要局部修改角色信息，优先使用 patch_character_field 工具；search 必须唯一命中，0 个或超过 1 个匹配都应视为失败。\n只有在用户明确要求重写整个字段时，才使用 edit_character 工具。\n如果需要添加世界书条目，请使用 create_worldbook_entry 工具。".to_string()
+    "基于用户需求分析现有角色设定，提供建议并调用相应工具。\n始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。\n如果需要局部修改角色信息，优先先用 read_character_field 或 patch_character_field(dry_run=true) 确认当前文本，再使用 patch_character_field；search 必须唯一命中，0 个或超过 1 个匹配都应视为失败。\n只有在用户明确要求重写整个字段时，才使用 edit_character 工具。\n如果需要处理世界书，先使用 list_world_book_entries，必要时再用 read_world_book_entry / update_world_book_entry / delete_world_book_entry；如果需要添加世界书条目，请使用 create_world_book_entry 工具。".to_string()
 }
 
 /// AI角色配置
@@ -83,8 +83,8 @@ impl AIConfigService {
             max_tokens: 2000,
             tools_enabled: true,
             context_role_template: "角色卡编写助手".to_string(),
-            context_task_template: "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当用户要求局部修改某个字段中的一句话、某个 trait 或某段内容时，优先使用工具(patch_character_field)做唯一命中的局部补丁编辑；只有当用户明确要求重写整个字段时，才使用 edit_character。 当用户确认添加 worldbook 条目的时候，使用工具(create_world_book_entry)。当用户明确要求删除某个世界书条目时，优先使用 delete_world_book_entry，并尽量传 entry_id 以避免误删。".to_string(),
-            context_instructions_template: "基于用户需求分析现有角色设定，提供建议并调用相应工具。\n始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。\n如果需要局部修改角色信息，优先使用 patch_character_field 工具；search 必须唯一命中，0 个或超过 1 个匹配都应视为失败。\n只有在用户明确要求重写整个字段时，才使用 edit_character 工具。\n如果需要添加世界书条目，请使用 create_worldbook_entry 工具。".to_string(),
+                  context_task_template: "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当需要局部修改某个字段中的一句话、某个 trait 或某段内容时，优先先读后写：不确定当前文本时使用 read_character_field 或 patch_character_field(dry_run=true) 预览，确认唯一命中后再执行 patch_character_field；只有当用户明确要求重写整个字段时，才使用 edit_character。当处理世界书时，先使用 list_world_book_entries 查看候选，必要时用 read_world_book_entry 读取完整条目；创建使用 create_world_book_entry，更新使用 update_world_book_entry，删除使用 delete_world_book_entry，并尽量传 entry_id 以避免误操作。".to_string(),
+                  context_instructions_template: "基于用户需求分析现有角色设定，提供建议并调用相应工具。\n始终保持角色设定的一致性和逻辑性，遵循用户的具体要求。\n如果需要局部修改角色信息，优先先用 read_character_field 或 patch_character_field(dry_run=true) 确认当前文本，再使用 patch_character_field；search 必须唯一命中，0 个或超过 1 个匹配都应视为失败。\n只有在用户明确要求重写整个字段时，才使用 edit_character 工具。\n如果需要处理世界书，先使用 list_world_book_entries，必要时再用 read_world_book_entry / update_world_book_entry / delete_world_book_entry；如果需要添加世界书条目，请使用 create_world_book_entry 工具。".to_string(),
         }
     }
 
@@ -98,7 +98,7 @@ impl AIConfigService {
             tools_enabled: true,
             context_role_template: "创意写作助手".to_string(),
             context_task_template: "围绕角色卡和世界观帮助用户进行剧情构思、桥段展开、对白润色与创作延展。必要时可以调用工具同步角色卡与世界书。".to_string(),
-            context_instructions_template: "优先保持创意、多样性与角色一致性。\n如果用户要求你直接修改角色设定中的局部内容，优先使用 patch_character_field 工具；只有明确要求整段重写时才使用 edit_character。\n如果用户要求补充世界观知识，请使用 create_worldbook_entry 工具。".to_string(),
+                 context_instructions_template: "优先保持创意、多样性与角色一致性。\n如果用户要求你直接修改角色设定中的局部内容，先使用 read_character_field 或 patch_character_field(dry_run=true) 确认上下文，再使用 patch_character_field；只有明确要求整段重写时才使用 edit_character。\n如果用户要求补充或调整世界观知识，先使用 list_world_book_entries / read_world_book_entry 了解现状；新增请使用 create_world_book_entry，更新请使用 update_world_book_entry。".to_string(),
         }
     }
 

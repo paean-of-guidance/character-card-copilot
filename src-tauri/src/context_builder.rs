@@ -151,16 +151,32 @@ impl ContextBuilder {
         if self.options.tools_enabled {
             content.push_str("tools:\n");
             content.push_str("  - name: \"patch_character_field\"\n");
-            content.push_str("    description: \"对 description、personality 等长文本字段做局部替换或插入；search 必须唯一命中，否则失败\"\n");
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"operation\": {\"type\": \"string\", \"enum\": [\"replace\", \"insert_before\", \"insert_after\"]}, \"match_mode\": {\"type\": \"string\", \"enum\": [\"exact\", \"regex\"]}, \"search\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}\n");
+            content.push_str("    description: \"对 description、personality 等长文本字段做局部替换或插入；支持 dry_run 预览；search 必须唯一命中，否则失败\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"operation\": {\"type\": \"string\", \"enum\": [\"replace\", \"insert_before\", \"insert_after\"]}, \"match_mode\": {\"type\": \"string\", \"enum\": [\"exact\", \"regex\"]}, \"search\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"dry_run\": {\"type\": \"boolean\"}}}\n");
+
+            content.push_str("  - name: \"read_character_field\"\n");
+            content.push_str("    description: \"读取 description、personality 等长文本字段内容，支持分页\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"start\": {\"type\": \"integer\"}, \"max_chars\": {\"type\": \"integer\"}}}\n");
 
             content.push_str("  - name: \"edit_character\"\n");
             content.push_str("    description: \"整字段重写角色字段；仅在用户明确要求整段重写时使用\"\n");
             content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"value\": {\"type\": \"string\"}}}\n");
 
-            content.push_str("  - name: \"create_worldbook_entry\"\n");
+            content.push_str("  - name: \"list_world_book_entries\"\n");
+            content.push_str("    description: \"列出当前角色的世界书条目摘要，适合删除或编辑前先查看候选\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}}}\n");
+
+            content.push_str("  - name: \"read_world_book_entry\"\n");
+            content.push_str("    description: \"读取单个世界书条目的完整内容；优先使用 entry_id\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"entry_id\": {\"type\": \"string\"}, \"name\": {\"type\": \"string\"}, \"key\": {\"type\": \"string\"}}}\n");
+
+            content.push_str("  - name: \"create_world_book_entry\"\n");
             content.push_str("    description: \"创建世界书条目\"\n");
             content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"keys\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}\n");
+
+            content.push_str("  - name: \"update_world_book_entry\"\n");
+            content.push_str("    description: \"更新单个世界书条目的结构化字段；优先使用 entry_id\"\n");
+            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"entry_id\": {\"type\": \"string\"}, \"name\": {\"type\": \"string\"}, \"key\": {\"type\": \"string\"}, \"keys\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"comment\": {\"type\": \"string\"}, \"enabled\": {\"type\": \"boolean\"}, \"priority\": {\"type\": \"integer\"}, \"position\": {\"type\": \"string\"}, \"depth\": {\"type\": \"integer\"}, \"probability\": {\"type\": \"integer\"}}}\n");
         }
 
         // 添加指令

@@ -4,24 +4,13 @@ use crate::ai_tools::{
     ToolParameters, ToolResult,
 };
 use crate::character_storage::{CharacterBook, CharacterStorage, WorldBookEntry};
+use crate::tools::world_book_shared::build_content_preview;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
 /// 世界书条目创建工具
 pub struct CreateWorldBookEntryTool;
-
-impl CreateWorldBookEntryTool {
-    fn build_content_preview(content: &str) -> String {
-        const PREVIEW_CHAR_LIMIT: usize = 50;
-        if content.chars().count() > PREVIEW_CHAR_LIMIT {
-            let truncated: String = content.chars().take(PREVIEW_CHAR_LIMIT).collect();
-            format!("{}...", truncated)
-        } else {
-            content.to_string()
-        }
-    }
-}
 
 #[async_trait]
 impl AIToolTrait for CreateWorldBookEntryTool {
@@ -287,8 +276,7 @@ impl AIToolTrait for CreateWorldBookEntryTool {
                     eprintln!("发送世界书条目创建事件失败: {}", e);
                 }
 
-                let content_preview =
-                    CreateWorldBookEntryTool::build_content_preview(&new_entry.content);
+                    let content_preview = build_content_preview(&new_entry.content);
 
                 ToolResult {
                     success: true,

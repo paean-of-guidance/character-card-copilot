@@ -6,9 +6,10 @@ use crate::ai_tools::{
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::{CharacterStorage, TavernCardV2};
+use crate::tools::world_book_shared::{get_bool_parameter, unique_fragments_from_text};
 use async_trait::async_trait;
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::AppHandle;
 
@@ -22,6 +23,10 @@ const SUPPORTED_FIELDS: &[(&str, &str)] = &[
     ("system_prompt", "系统提示词"),
     ("post_history_instructions", "历史后指令"),
 ];
+
+const CONTEXT_RADIUS: usize = 50;
+const PREVIEW_CHAR_LIMIT: usize = 160;
+const MAX_CONTEXT_CANDIDATES: usize = 5;
 
 pub struct PatchCharacterFieldTool;
 
@@ -51,6 +56,8 @@ struct PatchOutput {
     matched_text: String,
     match_start: usize,
     match_end: usize,
+    updated_start: usize,
+    updated_end: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +74,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
     }
 
     fn description(&self) -> &'static str {
-        "对角色卡的单个长文本字段做局部补丁编辑。支持 replace、insert_before、insert_after 三种操作，支持 exact 或 regex 搜索。搜索结果必须唯一：0 个匹配或超过 1 个匹配都会失败。适合只修改 description、personality 等字段中的某一小段内容，而不是整段重写。"
+        "对角色卡的单个长文本字段做局部补丁编辑。支持 replace、insert_before、insert_after 三种操作，支持 exact 或 regex 搜索。支持 dry_run 预览；搜索结果必须唯一：0 个匹配或超过 1 个匹配都会失败。"
     }
 
     fn category(&self) -> &'static str {
@@ -85,23 +92,29 @@ impl AIToolTrait for PatchCharacterFieldTool {
                     "missing_character_uuid",
                     "缺少角色UUID".to_string(),
                     None,
-                );
+                )
             }
         };
 
         let field = match required_string(&request.parameters, "field") {
             Ok(value) => value,
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
 
         let operation = match parse_operation(&request.parameters) {
             Ok(value) => value,
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
 
         let match_mode = match parse_match_mode(&request.parameters) {
             Ok(value) => value,
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
 
         let search = match required_string(&request.parameters, "search") {
@@ -114,13 +127,19 @@ impl AIToolTrait for PatchCharacterFieldTool {
                     None,
                 )
             }
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
 
         let content = match required_string(&request.parameters, "content") {
             Ok(value) => value,
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
+
+        let dry_run = get_bool_parameter(&request.parameters, "dry_run").unwrap_or(false);
 
         let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
             Ok(Some(data)) => data,
@@ -145,7 +164,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
                     start_time,
                     "unsupported_field",
                     format!("字段 '{}' 不支持 patch_character_field", field),
-                    Some(serde_json::json!({
+                    Some(json!({
                         "field": field,
                         "supported_fields": supported_field_names(),
                     })),
@@ -153,10 +172,30 @@ impl AIToolTrait for PatchCharacterFieldTool {
             }
         };
 
-        let patch_output = match apply_patch(&original_text, operation, match_mode, &search, &content) {
+        let patch_output = match apply_patch(&field, &original_text, operation, match_mode, &search, &content) {
             Ok(output) => output,
-            Err(failure) => return failure_result(start_time, failure.code, failure.message, failure.details),
+            Err(failure) => {
+                return failure_result(start_time, failure.code, failure.message, failure.details)
+            }
         };
+
+        let result_data = build_success_data(
+            &field,
+            operation,
+            match_mode,
+            dry_run,
+            &original_text,
+            &patch_output,
+        );
+
+        if dry_run {
+            return ToolResult {
+                success: true,
+                data: Some(result_data),
+                error: None,
+                execution_time_ms: start_time.elapsed().as_millis() as u64,
+            };
+        }
 
         if let Err(failure) = set_field_value(&mut tavern_card, &field, patch_output.updated_text.clone()) {
             return failure_result(start_time, failure.code, failure.message, failure.details);
@@ -197,16 +236,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
 
                 ToolResult {
                     success: true,
-                    data: Some(serde_json::json!({
-                        "message": "角色字段局部更新成功",
-                        "field": field,
-                        "operation": operation.as_str(),
-                        "match_mode": match_mode.as_str(),
-                        "matched_text": patch_output.matched_text,
-                        "match_start": patch_output.match_start,
-                        "match_end": patch_output.match_end,
-                        "updated_length": patch_output.updated_text.chars().count(),
-                    })),
+                    data: Some(result_data),
                     error: None,
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 }
@@ -287,6 +317,18 @@ impl AIToolTrait for PatchCharacterFieldTool {
             },
         );
 
+        properties.insert(
+            "dry_run".to_string(),
+            ChatToolParameter {
+                param_type: "boolean".to_string(),
+                description: Some("是否只预览匹配和修改结果而不实际保存，默认 false".to_string()),
+                enum_values: None,
+                items: None,
+                properties: None,
+                required: None,
+            },
+        );
+
         ToolDefinition {
             tool_type: "function".to_string(),
             function: ToolFunction {
@@ -336,7 +378,7 @@ fn parse_operation(parameters: &HashMap<String, Value>) -> Result<PatchOperation
         _ => Err(ToolFailure {
             code: "invalid_operation",
             message: format!("不支持的 operation: {}", raw),
-            details: Some(serde_json::json!({
+            details: Some(json!({
                 "operation": raw,
                 "supported_operations": ["replace", "insert_before", "insert_after"],
             })),
@@ -352,7 +394,7 @@ fn parse_match_mode(parameters: &HashMap<String, Value>) -> Result<MatchMode, To
         _ => Err(ToolFailure {
             code: "invalid_match_mode",
             message: format!("不支持的 match_mode: {}", raw),
-            details: Some(serde_json::json!({
+            details: Some(json!({
                 "match_mode": raw,
                 "supported_match_modes": ["exact", "regex"],
             })),
@@ -366,12 +408,12 @@ fn required_string(parameters: &HashMap<String, Value>, key: &'static str) -> Re
         Some(_) => Err(ToolFailure {
             code: "invalid_parameter_type",
             message: format!("参数 '{}' 必须是字符串", key),
-            details: Some(serde_json::json!({ "parameter": key })),
+            details: Some(json!({ "parameter": key })),
         }),
         None => Err(ToolFailure {
             code: "missing_parameter",
             message: format!("缺少必填参数 '{}'", key),
-            details: Some(serde_json::json!({ "parameter": key })),
+            details: Some(json!({ "parameter": key })),
         }),
     }
 }
@@ -404,7 +446,7 @@ fn set_field_value(card: &mut TavernCardV2, field: &str, value: String) -> Resul
             return Err(ToolFailure {
                 code: "unsupported_field",
                 message: format!("字段 '{}' 不支持 patch_character_field", field),
-                details: Some(serde_json::json!({
+                details: Some(json!({
                     "field": field,
                     "supported_fields": supported_field_names(),
                 })),
@@ -416,35 +458,37 @@ fn set_field_value(card: &mut TavernCardV2, field: &str, value: String) -> Resul
 }
 
 fn apply_patch(
+    field: &str,
     original_text: &str,
     operation: PatchOperation,
     match_mode: MatchMode,
     search: &str,
     content: &str,
 ) -> Result<PatchOutput, ToolFailure> {
-    let matched_span = find_unique_match(original_text, match_mode, search)?;
+    let matched_span = find_unique_match(field, original_text, match_mode, search)?;
 
-    let updated_text = match operation {
+    let (updated_text, updated_start, updated_end) = match operation {
         PatchOperation::Replace => {
-            let mut next = String::with_capacity(original_text.len() - matched_span.matched_text.len() + content.len());
+            let mut next =
+                String::with_capacity(original_text.len() - matched_span.matched_text.len() + content.len());
             next.push_str(&original_text[..matched_span.start]);
             next.push_str(content);
             next.push_str(&original_text[matched_span.end..]);
-            next
+            (next, matched_span.start, matched_span.start + content.len())
         }
         PatchOperation::InsertBefore => {
             let mut next = String::with_capacity(original_text.len() + content.len());
             next.push_str(&original_text[..matched_span.start]);
             next.push_str(content);
             next.push_str(&original_text[matched_span.start..]);
-            next
+            (next, matched_span.start, matched_span.start + content.len())
         }
         PatchOperation::InsertAfter => {
             let mut next = String::with_capacity(original_text.len() + content.len());
             next.push_str(&original_text[..matched_span.end]);
             next.push_str(content);
             next.push_str(&original_text[matched_span.end..]);
-            next
+            (next, matched_span.end, matched_span.end + content.len())
         }
     };
 
@@ -453,10 +497,17 @@ fn apply_patch(
         matched_text: matched_span.matched_text,
         match_start: matched_span.start,
         match_end: matched_span.end,
+        updated_start,
+        updated_end,
     })
 }
 
-fn find_unique_match(text: &str, match_mode: MatchMode, search: &str) -> Result<MatchSpan, ToolFailure> {
+fn find_unique_match(
+    field: &str,
+    text: &str,
+    match_mode: MatchMode,
+    search: &str,
+) -> Result<MatchSpan, ToolFailure> {
     let matches = match match_mode {
         MatchMode::Exact => find_exact_matches(text, search),
         MatchMode::Regex => find_regex_matches(text, search)?,
@@ -466,10 +517,7 @@ fn find_unique_match(text: &str, match_mode: MatchMode, search: &str) -> Result<
         [] => Err(ToolFailure {
             code: "no_match",
             message: "search 未命中任何内容，未执行修改".to_string(),
-            details: Some(serde_json::json!({
-                "search": search,
-                "match_mode": match_mode.as_str(),
-            })),
+            details: Some(build_no_match_details(field, text, match_mode, search)),
         }),
         [single] => Ok(single.clone()),
         multiple => Err(ToolFailure {
@@ -478,11 +526,7 @@ fn find_unique_match(text: &str, match_mode: MatchMode, search: &str) -> Result<
                 "search 匹配到 {} 处内容，结果不唯一，未执行修改",
                 multiple.len()
             ),
-            details: Some(serde_json::json!({
-                "search": search,
-                "match_mode": match_mode.as_str(),
-                "match_count": multiple.len(),
-            })),
+            details: Some(build_multiple_match_details(field, text, match_mode, search, multiple)),
         }),
     }
 }
@@ -501,7 +545,7 @@ fn find_regex_matches(text: &str, search: &str) -> Result<Vec<MatchSpan>, ToolFa
     let regex = Regex::new(search).map_err(|error| ToolFailure {
         code: "invalid_regex",
         message: format!("无效的正则表达式: {}", error),
-        details: Some(serde_json::json!({
+        details: Some(json!({
             "search": search,
         })),
     })?;
@@ -514,6 +558,153 @@ fn find_regex_matches(text: &str, search: &str) -> Result<Vec<MatchSpan>, ToolFa
             matched_text: matched.as_str().to_string(),
         })
         .collect())
+}
+
+fn build_success_data(
+    field: &str,
+    operation: PatchOperation,
+    match_mode: MatchMode,
+    dry_run: bool,
+    original_text: &str,
+    patch_output: &PatchOutput,
+) -> Value {
+    let matched_context = build_context_value(
+        original_text,
+        patch_output.match_start,
+        patch_output.match_end,
+        "matched_text",
+    );
+    let updated_context = build_context_value(
+        &patch_output.updated_text,
+        patch_output.updated_start,
+        patch_output.updated_end,
+        "selected_text",
+    );
+
+    json!({
+        "message": if dry_run { "角色字段补丁预览成功" } else { "角色字段局部更新成功" },
+        "field": field,
+        "operation": operation.as_str(),
+        "match_mode": match_mode.as_str(),
+        "dry_run": dry_run,
+        "would_change": true,
+        "matched_text": patch_output.matched_text,
+        "match_start": patch_output.match_start,
+        "match_end": patch_output.match_end,
+        "updated_length": patch_output.updated_text.chars().count(),
+        "matched_context": matched_context,
+        "updated_context": updated_context,
+        "updated_preview": build_preview_snippet(&patch_output.updated_text, patch_output.updated_start, patch_output.updated_end),
+    })
+}
+
+fn build_no_match_details(field: &str, text: &str, match_mode: MatchMode, search: &str) -> Value {
+    let fragment_matches = if match_mode == MatchMode::Exact {
+        build_fragment_match_candidates(text, search)
+    } else {
+        Vec::new()
+    };
+
+    json!({
+        "field": field,
+        "field_length": text.chars().count(),
+        "search": search,
+        "match_mode": match_mode.as_str(),
+        "field_preview_head": preview_head(text),
+        "field_preview_tail": preview_tail(text),
+        "fragment_matches": fragment_matches,
+    })
+}
+
+fn build_multiple_match_details(
+    field: &str,
+    text: &str,
+    match_mode: MatchMode,
+    search: &str,
+    matches: &[MatchSpan],
+) -> Value {
+    let candidates = matches
+        .iter()
+        .take(MAX_CONTEXT_CANDIDATES)
+        .map(|matched| build_context_value(text, matched.start, matched.end, "matched_text"))
+        .collect::<Vec<_>>();
+
+    json!({
+        "field": field,
+        "search": search,
+        "match_mode": match_mode.as_str(),
+        "match_count": matches.len(),
+        "candidates": candidates,
+    })
+}
+
+fn build_fragment_match_candidates(text: &str, search: &str) -> Vec<Value> {
+    let mut candidates = Vec::new();
+
+    for fragment in unique_fragments_from_text(search, 2)
+        .into_iter()
+        .take(MAX_CONTEXT_CANDIDATES)
+    {
+        if let Some((start, matched)) = text.match_indices(&fragment).next() {
+            candidates.push(json!({
+                "fragment": fragment,
+                "match_start": start,
+                "match_end": start + matched.len(),
+                "context_before": build_context_parts(text, start, start).0,
+                "context_after": build_context_parts(text, start + matched.len(), start + matched.len()).1,
+            }));
+        }
+    }
+
+    candidates
+}
+
+fn build_context_value(text: &str, start: usize, end: usize, focus_key: &str) -> Value {
+    let (context_before, context_after) = build_context_parts(text, start, end);
+    json!({
+        "match_start": start,
+        "match_end": end,
+        "context_before": context_before,
+        focus_key: text[start..end],
+        "context_after": context_after,
+    })
+}
+
+fn build_context_parts(text: &str, start: usize, end: usize) -> (String, String) {
+    let start_char = text[..start].chars().count();
+    let end_char = text[..end].chars().count();
+    let context_start_char = start_char.saturating_sub(CONTEXT_RADIUS);
+    let context_end_char = (end_char + CONTEXT_RADIUS).min(text.chars().count());
+
+    let context_before = slice_by_chars(text, context_start_char, start_char);
+    let context_after = slice_by_chars(text, end_char, context_end_char);
+
+    (context_before, context_after)
+}
+
+fn build_preview_snippet(text: &str, start: usize, end: usize) -> String {
+    let start_char = text[..start].chars().count();
+    let end_char = text[..end].chars().count();
+    let preview_start = start_char.saturating_sub(CONTEXT_RADIUS);
+    let preview_end = (end_char + CONTEXT_RADIUS).min(text.chars().count());
+    slice_by_chars(text, preview_start, preview_end)
+}
+
+fn preview_head(text: &str) -> String {
+    slice_by_chars(text, 0, PREVIEW_CHAR_LIMIT.min(text.chars().count()))
+}
+
+fn preview_tail(text: &str) -> String {
+    let total = text.chars().count();
+    let start = total.saturating_sub(PREVIEW_CHAR_LIMIT);
+    slice_by_chars(text, start, total)
+}
+
+fn slice_by_chars(text: &str, start: usize, end: usize) -> String {
+    text.chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
 }
 
 fn supported_field_names() -> Vec<String> {
@@ -531,7 +722,7 @@ fn failure_result(
 ) -> ToolResult {
     ToolResult {
         success: false,
-        data: Some(serde_json::json!({
+        data: Some(json!({
             "error_code": code,
             "details": details,
         })),
@@ -542,11 +733,12 @@ fn failure_result(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_patch, MatchMode, PatchOperation};
+    use super::{apply_patch, find_unique_match, MatchMode, PatchOperation};
 
     #[test]
     fn replace_exact_unique_match() {
         let output = apply_patch(
+            "description",
             "Proud, Dominant, Cold",
             PatchOperation::Replace,
             MatchMode::Exact,
@@ -562,6 +754,7 @@ mod tests {
     #[test]
     fn insert_after_regex_unique_match() {
         let output = apply_patch(
+            "description",
             "Height: 175cm\nWeight: 60kg",
             PatchOperation::InsertAfter,
             MatchMode::Regex,
@@ -574,30 +767,30 @@ mod tests {
     }
 
     #[test]
-    fn no_match_returns_error() {
-        let error = apply_patch(
+    fn no_match_returns_fragment_candidates() {
+        let error = find_unique_match(
+            "description",
             "Proud, Dominant, Cold",
-            PatchOperation::Replace,
             MatchMode::Exact,
-            "Gentle",
-            "Gentle",
+            "Gentle Cold",
         )
         .expect_err("patch should fail");
 
         assert_eq!(error.code, "no_match");
+        assert!(error.details.unwrap()["fragment_matches"].as_array().unwrap().len() >= 1);
     }
 
     #[test]
-    fn multiple_matches_returns_error() {
-        let error = apply_patch(
+    fn multiple_matches_returns_candidates() {
+        let error = find_unique_match(
+            "description",
             "cold and cold again",
-            PatchOperation::Replace,
             MatchMode::Exact,
             "cold",
-            "warm",
         )
         .expect_err("patch should fail");
 
         assert_eq!(error.code, "multiple_matches");
+        assert_eq!(error.details.unwrap()["candidates"].as_array().unwrap().len(), 2);
     }
 }
