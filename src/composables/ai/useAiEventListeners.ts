@@ -64,11 +64,38 @@ export function useAiEventListeners(
       tool_calls: message.tool_calls,
       tool_call_id: message.tool_call_id,
       name: message.name,
+      reasoningContent: message.reasoning_content,
+      reasoningExpanded: message.reasoning_content ? false : undefined,
     };
   }
 
   function removeTransientMessages(targetMessageId: string) {
     messages.value = messages.value.filter((message) => message.streamTargetId !== targetMessageId);
+  }
+
+  function finalizeAbortedTurn(targetMessageId: string) {
+    messages.value = messages.value.flatMap((message) => {
+      if (message.streamTargetId !== targetMessageId) {
+        return [message];
+      }
+
+      const nextMessage: DisplayMessage = {
+        ...message,
+        isStreaming: false,
+        isReasoningStreaming: false,
+      };
+
+      delete nextMessage.streamTargetId;
+      delete nextMessage.transientKind;
+
+      const hasVisibleAssistantContent =
+        nextMessage.role !== 'assistant'
+        || !!nextMessage.content.trim()
+        || !!nextMessage.reasoningContent?.trim()
+        || !!nextMessage.tool_calls?.length;
+
+      return hasVisibleAssistantContent ? [nextMessage] : [];
+    });
   }
 
   function clearReasoningState(message: DisplayMessage) {
@@ -97,20 +124,42 @@ export function useAiEventListeners(
   }
 
   function findStreamingAssistantMessage(targetMessageId: string) {
-    return messages.value.find(
-      (message) => message.streamTargetId === targetMessageId && message.transientKind === 'stream-assistant',
-    );
+    return [...messages.value]
+      .reverse()
+      .find((message) => message.streamTargetId === targetMessageId && message.transientKind === 'stream-assistant');
+  }
+
+  function hasToolActivityAfterAssistant(targetMessageId: string, assistantMessageId: string) {
+    const assistantIndex = messages.value.findIndex((message) => message.id === assistantMessageId);
+    if (assistantIndex < 0) {
+      return false;
+    }
+
+    return messages.value.slice(assistantIndex + 1).some((message) => {
+      if (message.streamTargetId !== targetMessageId) {
+        return false;
+      }
+
+      return message.transientKind === 'tool-call-carrier' || message.transientKind === 'tool-status';
+    });
   }
 
   function ensureStreamingAssistantMessage(targetMessageId: string, timestamp: number): DisplayMessage {
     const existingMessage = findStreamingAssistantMessage(targetMessageId);
 
-    if (existingMessage) {
+    if (
+      existingMessage &&
+      !(
+        !existingMessage.isStreaming &&
+        !existingMessage.isReasoningStreaming &&
+        hasToolActivityAfterAssistant(targetMessageId, existingMessage.id)
+      )
+    ) {
       return existingMessage;
     }
 
     const nextMessage: DisplayMessage = {
-      id: targetMessageId,
+      id: existingMessage ? `${targetMessageId}_${Date.now()}` : targetMessageId,
       role: 'assistant',
       content: '',
       timestamp: new Date(timestamp),
@@ -222,6 +271,8 @@ export function useAiEventListeners(
         tool_calls: msg.tool_calls,
         tool_call_id: msg.tool_call_id,
         name: msg.name,
+        reasoningContent: msg.reasoning_content,
+        reasoningExpanded: msg.reasoning_content ? false : undefined,
       }));
 
       chatStore.setChatHistory(payload.uuid, payload.chat_history);
@@ -256,7 +307,7 @@ export function useAiEventListeners(
       }
 
       if (payload.is_aborted) {
-        removeTransientMessages(payload.target_message_id);
+        finalizeAbortedTurn(payload.target_message_id);
         if (activeAssistantTargetId === payload.target_message_id) {
           activeAssistantTargetId = null;
         }
@@ -276,16 +327,7 @@ export function useAiEventListeners(
       const payload = event.payload;
 
       if (payload.is_aborted) {
-        const targetMessage = messages.value.find((message) => message.id === payload.target_message_id);
-
-        if (targetMessage) {
-          clearReasoningState(targetMessage);
-        }
-
-        const transientMessage = findStreamingAssistantMessage(payload.target_message_id);
-        if (transientMessage) {
-          clearReasoningState(transientMessage);
-        }
+        finalizeAbortedTurn(payload.target_message_id);
 
         if (activeAssistantTargetId === payload.target_message_id) {
           activeAssistantTargetId = null;

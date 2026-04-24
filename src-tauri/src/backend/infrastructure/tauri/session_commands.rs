@@ -86,3 +86,9 @@ pub async fn continue_chat(
 ) -> Result<(), String> {
     SessionService::continue_chat(&app_handle, role_id).await
 }
+
+/// 中断当前 AI 响应
+#[tauri::command]
+pub async fn interrupt_ai_response(uuid: Option<String>) -> Result<bool, String> {
+    SessionService::interrupt_ai_response(uuid)
+}

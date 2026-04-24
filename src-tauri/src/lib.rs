@@ -1,6 +1,7 @@
 // Copyright 2025 Character Card Copilot Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+mod ai_cancellation;
 mod ai_chat;
 mod ai_config;
 mod ai_tools;
@@ -28,11 +29,11 @@ use backend::infrastructure::tauri::{
     get_api_config_by_profile, get_available_tools, get_character_by_uuid, get_default_api_config,
     get_last_chat_message, get_recent_chat_messages, get_session_info, get_tool_categories,
     get_tools_by_category, import_character_card, import_character_card_from_bytes,
-    load_character_session, load_chat_history, regenerate_last_message, save_all_sessions,
-    save_chat_message, send_chat_message, set_default_ai_role, set_default_api_config,
-    test_api_connection, toggle_api_config, truncate_to_token_limit, unload_character_session,
-    update_ai_role, update_api_config, update_character, update_character_background_path,
-    update_character_field, upload_background_image,
+    interrupt_ai_response, load_character_session, load_chat_history, regenerate_last_message,
+    save_all_sessions, save_chat_message, send_chat_message, set_default_ai_role,
+    set_default_api_config, test_api_connection, toggle_api_config, truncate_to_token_limit,
+    unload_character_session, update_ai_role, update_api_config, update_character,
+    update_character_background_path, update_character_field, upload_background_image,
 };
 use character_state::{
     clear_active_character, get_active_character, has_active_character, set_active_character,
@@ -115,6 +116,7 @@ pub fn run() {
             edit_chat_message,
             regenerate_last_message,
             continue_chat,
+            interrupt_ai_response,
             // 上下文构建命令
             build_context,
             // Token 计数命令

@@ -87,6 +87,20 @@ const parsedPayload = computed<ToolPayload | null>(() => {
     }
 });
 
+const parsedArgs = computed<unknown>(() => {
+    const rawArgs = props.toolCall?.function.arguments;
+
+    if (!rawArgs) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(rawArgs);
+    } catch {
+        return rawArgs;
+    }
+});
+
 const toolName = computed(() => {
     return (
         props.toolCall?.function.name ||
@@ -157,13 +171,11 @@ const summaryText = computed(() => {
 });
 
 const argsText = computed(() => {
-    const rawArgs = props.toolCall?.function.arguments;
-
-    if (!rawArgs) {
+    if (!parsedArgs.value) {
         return '无参数';
     }
 
-    return formatValue(rawArgs);
+    return stripMarkdownFences(formatArgumentDisplay(parsedArgs.value));
 });
 
 const resultText = computed(() => {
@@ -171,12 +183,11 @@ const resultText = computed(() => {
         return '执行中...';
     }
 
-    if (parsedPayload.value?.result !== undefined) {
-        return formatValue(parsedPayload.value.result);
-    }
-
-    if (parsedPayload.value?.data !== undefined) {
-        return formatValue(parsedPayload.value.data);
+    const structuredResult = parsedPayload.value?.result ?? parsedPayload.value?.data;
+    if (structuredResult !== undefined) {
+        return stripMarkdownFences(
+            formatToolDisplay(toolName.value, structuredResult, parsedPayload.value?.error ?? null),
+        );
     }
 
     if (parsedPayload.value?.error) {
@@ -184,30 +195,190 @@ const resultText = computed(() => {
     }
 
     if (props.toolResult?.content) {
-        return formatValue(props.toolResult.content);
+        return stripMarkdownFences(props.toolResult.content);
     }
 
     return '暂无结果';
 });
 
-function formatValue(value: unknown): string {
+function formatArgumentDisplay(value: unknown): string {
+    return formatYamlLike(value);
+}
+
+function formatToolDisplay(tool: string, value: unknown, error?: string | null): string {
+    if (tool === 'patch_character_field') {
+        return formatPatchDisplay(value, error);
+    }
+
+    if (tool === 'read_character_field') {
+        return formatReadFieldDisplay(value, error);
+    }
+
+    if (tool === 'list_world_book_entries' || tool === 'read_world_book_entry') {
+        return formatYamlLike(value);
+    }
+
+    if (error) {
+        return [`failed ${tool}`, error, formatYamlLike(value)].filter(Boolean).join('\n');
+    }
+
+    return formatYamlLike(value);
+}
+
+function formatPatchDisplay(value: unknown, error?: string | null): string {
+    const record = asRecord(value);
+
+    if (!record) {
+        return error ? `failed patch_character_field\n${error}` : formatYamlLike(value);
+    }
+
+    const lines: string[] = [];
+    const meta = [
+        record.field ? `field=${String(record.field)}` : '',
+        record.operation ? `op=${String(record.operation)}` : '',
+        record.match_mode ? `match=${String(record.match_mode)}` : '',
+        typeof record.dry_run === 'boolean' ? `dry_run=${String(record.dry_run)}` : '',
+    ].filter(Boolean);
+
+    if (error) {
+        lines.push('failed patch_character_field');
+        lines.push(error);
+    } else {
+        lines.push('ok patch_character_field');
+    }
+
+    if (meta.length > 0) {
+        lines.push(meta.join(' | '));
+    }
+
+    const matchedContext = asRecord(record.matched_context);
+    const updatedContext = asRecord(record.updated_context);
+    const beforeLines = buildContextDiffLines(matchedContext, 'matched_text', '-');
+    const afterLines = buildContextDiffLines(updatedContext, 'selected_text', '+');
+
+    if (beforeLines.length > 0 || afterLines.length > 0) {
+        lines.push(...beforeLines, ...afterLines);
+        return lines.join('\n');
+    }
+
+    return [...lines, formatYamlLike(value)].join('\n');
+}
+
+function formatReadFieldDisplay(value: unknown, error?: string | null): string {
+    const record = asRecord(value);
+
+    if (!record) {
+        return error ? `failed read_character_field\n${error}` : formatYamlLike(value);
+    }
+
+    const field = typeof record.field === 'string' ? record.field : 'text';
+    const start = typeof record.start === 'number' ? record.start : 0;
+    const end = typeof record.end === 'number' ? record.end : 0;
+    const total = typeof record.total_length === 'number' ? record.total_length : end;
+    const truncated = typeof record.truncated === 'boolean' && record.truncated;
+    const text = typeof record.text === 'string' ? record.text : '';
+
+    const lines = [
+        error ? 'failed read_character_field' : 'ok read_character_field',
+        error || `field=${field} | range=${start}..${end}/${total}${truncated ? ' | truncated' : ''}`,
+    ];
+
+    if (text) {
+        lines.push(
+            text
+                .split(/\r?\n/)
+                .map((line, index) => `${index + 1} ${line}`)
+                .join('\n'),
+        );
+    }
+
+    return lines.filter(Boolean).join('\n');
+}
+
+function buildContextDiffLines(
+    context: Record<string, unknown> | null,
+    focusKey: 'matched_text' | 'selected_text',
+    prefix: '-' | '+',
+): string[] {
+    if (!context) {
+        return [];
+    }
+
+    const before = typeof context.context_before === 'string' ? context.context_before : '';
+    const focus = typeof context[focusKey] === 'string' ? String(context[focusKey]) : '';
+    const after = typeof context.context_after === 'string' ? context.context_after : '';
+    const combined = `${before}${focus}${after}`.trim();
+
+    if (!combined) {
+        return [];
+    }
+
+    return combined
+        .split(/\r?\n/)
+        .slice(0, 6)
+        .map((line) => `${prefix} ${line}`);
+}
+
+function formatYamlLike(value: unknown, indent = 0): string {
     if (typeof value === 'string') {
-        try {
-            return JSON.stringify(JSON.parse(value), null, 2);
-        } catch {
-            return value;
-        }
+        return value;
     }
 
     if (value === null || value === undefined) {
         return String(value);
     }
 
-    try {
-        return JSON.stringify(value, null, 2);
-    } catch {
+    if (typeof value === 'number' || typeof value === 'boolean') {
         return String(value);
     }
+
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => {
+                const rendered = formatYamlLike(item, indent + 2);
+                if (!rendered.includes('\n')) {
+                    return `${' '.repeat(indent)}- ${rendered}`;
+                }
+
+                const [firstLine, ...restLines] = rendered.split('\n');
+                return [
+                    `${' '.repeat(indent)}- ${firstLine}`,
+                    ...restLines.map((line) => `${' '.repeat(indent + 2)}${line}`),
+                ].join('\n');
+            })
+            .join('\n');
+    }
+
+    if (typeof value === 'object') {
+        return Object.entries(value as Record<string, unknown>)
+            .map(([key, nestedValue]) => {
+                const rendered = formatYamlLike(nestedValue, indent + 2);
+                if (!rendered.includes('\n')) {
+                    return `${' '.repeat(indent)}${key}: ${rendered}`;
+                }
+
+                return `${' '.repeat(indent)}${key}:\n${rendered}`;
+            })
+            .join('\n');
+    }
+
+    return String(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+
+    return value as Record<string, unknown>;
+}
+
+function stripMarkdownFences(value: string): string {
+    return value
+        .split(/\r?\n/)
+        .filter((line) => !line.trimStart().startsWith('```'))
+        .join('\n')
+        .trim();
 }
 </script>
 

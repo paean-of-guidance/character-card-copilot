@@ -46,6 +46,8 @@ const { enabledApis, defaultApi, selectedProfile } = storeToRefs(apiStore);
 const {
     aiRoles,
     currentRoleConfig,
+    isLoading,
+    isStopping,
     lastTokenStats,
     selectedRole: selectedRoleState,
     currentSessionUUID,
@@ -188,7 +190,7 @@ async function loadAIRoles() {
 
 // 发送消息（从 ChatInput 组件接收）
 async function handleSendMessage(message: string) {
-    if (aiStore.isLoading) return;
+    if (isLoading.value) return;
 
     const characterId = getCurrentCharacterId();
 
@@ -220,11 +222,33 @@ async function handleSendMessage(message: string) {
     }
 }
 
+async function handleStopResponse() {
+    if (!isLoading.value || isStopping.value) {
+        return;
+    }
+
+    try {
+        await aiStore.interruptResponse();
+    } catch (error) {
+        showErrorToast(`${error}`, "停止生成失败");
+        console.error("停止生成失败:", error);
+    }
+}
+
 // 处理来自 ChatInput 的键盘事件（命令面板导航）
 function handleInputKeydown(event: KeyboardEvent) {
     if (commandPaletteRef.value) {
         commandPaletteRef.value.handleKeydown(event);
     }
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key !== "Escape" || !isLoading.value) {
+        return;
+    }
+
+    event.preventDefault();
+    void handleStopResponse();
 }
 
 // 处理输入变化（用于命令面板搜索）
@@ -785,6 +809,7 @@ watch(commandAvailabilitySignature, (newValue, oldValue) => {
 });
 
 onMounted(async () => {
+    window.addEventListener("keydown", handleGlobalKeydown);
     await setupListeners();
 
     await Promise.all([loadApiConfigs(), loadAIRoles()]);
@@ -832,6 +857,7 @@ onMounted(async () => {
 
 // 组件卸载时清理事件监听器并保存状态到 store
 onUnmounted(() => {
+    window.removeEventListener("keydown", handleGlobalKeydown);
     clearCommandSearchDebounce();
     clearCommandRefreshDebounce();
 
@@ -919,7 +945,7 @@ onUnmounted(() => {
                     </div>
 
                     <!-- 加载中指示器 -->
-                    <div v-if="aiStore.isLoading && !hasStreamingAssistant" class="flex justify-start">
+                    <div v-if="isLoading && !hasStreamingAssistant" class="flex justify-start">
                         <div
                             class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 shadow-sm"
                         >
@@ -955,10 +981,13 @@ onUnmounted(() => {
 
                 <ChatInput
                     ref="chatInputRef"
-                    :disabled="aiStore.isLoading"
-                    :loading="aiStore.isLoading"
+                    :disabled="isLoading"
+                    :loading="isLoading"
+                    :can-stop="isLoading"
+                    :stopping="isStopping"
                     :command-palette-open="showCommandPalette"
                     @send="handleSendMessage"
+                    @stop="handleStopResponse"
                     @open-command-palette="openCommandPalette"
                     @keydown="handleInputKeydown"
                     @input="handleInputChange"

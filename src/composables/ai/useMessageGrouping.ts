@@ -43,6 +43,13 @@ export function useMessageGrouping(messages: Ref<DisplayMessage[]>): ComputedRef
           j += 1;
         }
 
+        if (msg.content || msg.reasoningContent) {
+          result.push({
+            type: 'normal',
+            message: msg,
+          });
+        }
+
         for (const toolCall of msg.tool_calls) {
           result.push({
             type: 'tool-meta',

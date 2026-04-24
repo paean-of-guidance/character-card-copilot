@@ -95,6 +95,7 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   name?: string;
+  reasoning_content?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   timestamp?: number; // 消息时间戳（毫秒）
@@ -115,6 +116,7 @@ export interface ToolCall {
   id: string;
   type: 'function';
   function: ToolCallFunction;
+  thought_signatures?: string[];
 }
 
 /**

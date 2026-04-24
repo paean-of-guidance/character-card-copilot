@@ -8,9 +8,11 @@ import { AIConfigService, type AIRole, type AIRoleEntry } from '@/services/aiCon
 
 const SESSION_WAIT_INTERVAL_MS = 50
 const SESSION_WAIT_TIMEOUT_MS = 2000
+const AI_RESPONSE_INTERRUPTED_ERROR = 'AI 响应已中断'
 
 export const useAiStore = defineStore('ai', () => {
   const isLoading = ref(false)
+  const isStopping = ref(false)
   const isBackendSessionActive = ref(false)
   const currentSessionUUID = ref<string>('')
   const lastTokenStats = ref<any>(null)
@@ -31,6 +33,14 @@ export const useAiStore = defineStore('ai', () => {
 
   function getEffectiveRoleId() {
     return selectedRole.value || defaultRole.value || aiRoles.value[0]?.id || ''
+  }
+
+  function isInterruptedError(error: unknown) {
+    if (error instanceof Error) {
+      return error.message.includes(AI_RESPONSE_INTERRUPTED_ERROR)
+    }
+
+    return String(error).includes(AI_RESPONSE_INTERRUPTED_ERROR)
   }
 
   async function loadCharacterSession(uuid: string) {
@@ -68,14 +78,19 @@ export const useAiStore = defineStore('ai', () => {
   async function sendChatMessage(message: string) {
     try {
       isLoading.value = true
+      isStopping.value = false
       const roleId = getEffectiveRoleId() || null
       await invoke('send_chat_message', { message, roleId })
       invalidateCommandAvailability()
     } catch (error) {
+      if (isInterruptedError(error)) {
+        return
+      }
       console.error('发送消息失败:', error)
       throw error
     } finally {
       isLoading.value = false
+      isStopping.value = false
     }
   }
 
@@ -108,28 +123,63 @@ export const useAiStore = defineStore('ai', () => {
   async function regenerateLastMessage() {
     try {
       isLoading.value = true
+      isStopping.value = false
       const roleId = getEffectiveRoleId() || null
       await invoke('regenerate_last_message', { roleId })
       invalidateCommandAvailability()
     } catch (error) {
+      if (isInterruptedError(error)) {
+        return
+      }
       console.error('重新生成失败:', error)
       throw error
     } finally {
       isLoading.value = false
+      isStopping.value = false
     }
   }
 
   async function continueChat() {
     try {
       isLoading.value = true
+      isStopping.value = false
       const roleId = getEffectiveRoleId() || null
       await invoke('continue_chat', { roleId })
       invalidateCommandAvailability()
     } catch (error) {
+      if (isInterruptedError(error)) {
+        return
+      }
       console.error('继续对话失败:', error)
       throw error
     } finally {
       isLoading.value = false
+      isStopping.value = false
+    }
+  }
+
+  async function interruptResponse(): Promise<boolean> {
+    if (!currentSessionUUID.value) {
+      return false
+    }
+
+    try {
+      isStopping.value = true
+      const interrupted = await invoke<boolean>('interrupt_ai_response', {
+        uuid: currentSessionUUID.value,
+      })
+
+      if (interrupted) {
+        isLoading.value = false
+        invalidateCommandAvailability()
+      }
+
+      return interrupted
+    } catch (error) {
+      console.error('中断AI响应失败:', error)
+      throw error
+    } finally {
+      isStopping.value = false
     }
   }
 
@@ -217,6 +267,7 @@ export const useAiStore = defineStore('ai', () => {
 
   function reset() {
     isLoading.value = false
+    isStopping.value = false
     isBackendSessionActive.value = false
     currentSessionUUID.value = ''
     lastTokenStats.value = null
@@ -230,6 +281,7 @@ export const useAiStore = defineStore('ai', () => {
 
   return {
     isLoading: readonly(isLoading),
+    isStopping: readonly(isStopping),
     isBackendSessionActive: readonly(isBackendSessionActive),
     currentSessionUUID: readonly(currentSessionUUID),
     lastTokenStats: readonly(lastTokenStats),
@@ -245,6 +297,7 @@ export const useAiStore = defineStore('ai', () => {
     deleteChatMessage,
     regenerateLastMessage,
     continueChat,
+    interruptResponse,
     loadChatHistory,
     loadAIRoles,
     selectRole,

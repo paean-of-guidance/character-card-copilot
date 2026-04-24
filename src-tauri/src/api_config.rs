@@ -504,6 +504,7 @@ impl ApiConfigService {
                 role: MessageRole::User,
                 content: "Reply with exactly one short word: PONG".to_string(),
                 name: None,
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
             }],

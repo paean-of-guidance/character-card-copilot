@@ -8,9 +8,15 @@ use tauri::{AppHandle, Manager};
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+    #[serde(default)]
     pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default)]
     pub tool_call_id: Option<String>,
+    #[serde(default)]
     pub timestamp: Option<i64>,
 }
 
@@ -19,12 +25,85 @@ pub struct ToolCall {
     pub id: String,
     pub r#type: String,
     pub function: ToolFunction,
+    #[serde(default)]
+    pub thought_signatures: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolFunction {
     pub name: String,
     pub arguments: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChatMessage, ToolCall, ToolFunction};
+
+    #[test]
+    fn legacy_history_line_defaults_new_reasoning_fields() {
+        let line = r#"{
+            "role":"assistant",
+            "content":"legacy reply",
+            "tool_calls":[
+                {
+                    "id":"call_1",
+                    "type":"function",
+                    "function":{"name":"search_web","arguments":"{\"q\":\"weather\"}"}
+                }
+            ],
+            "timestamp":1710000000
+        }"#;
+
+        let message: ChatMessage = serde_json::from_str(line).expect("legacy history should deserialize");
+
+        assert_eq!(message.role, "assistant");
+        assert_eq!(message.content, "legacy reply");
+        assert_eq!(message.timestamp, Some(1710000000));
+        assert!(message.name.is_none());
+        assert!(message.reasoning_content.is_none());
+
+        let tool_calls = message.tool_calls.expect("legacy tool calls should remain available");
+        assert_eq!(tool_calls.len(), 1);
+        assert!(tool_calls[0].thought_signatures.is_none());
+    }
+
+    #[test]
+    fn upgraded_history_line_round_trips_reasoning_metadata() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            name: None,
+            reasoning_content: Some("Need tool use before final reply".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_2".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "lookup".to_string(),
+                    arguments: "{\"query\":\"lore\"}".to_string(),
+                },
+                thought_signatures: Some(vec!["sig_1".to_string(), "sig_2".to_string()]),
+            }]),
+            tool_call_id: None,
+            timestamp: Some(1710000001),
+        };
+
+        let serialized =
+            serde_json::to_string(&message).expect("upgraded history should serialize successfully");
+        let restored: ChatMessage =
+            serde_json::from_str(&serialized).expect("upgraded history should deserialize");
+
+        assert_eq!(
+            restored.reasoning_content.as_deref(),
+            Some("Need tool use before final reply")
+        );
+
+        let tool_calls = restored.tool_calls.expect("tool calls should round-trip");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(
+            tool_calls[0].thought_signatures.as_ref(),
+            Some(&vec!["sig_1".to_string(), "sig_2".to_string()])
+        );
+    }
 }
 
 pub struct ChatHistoryManager {

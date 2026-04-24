@@ -11,10 +11,11 @@
                 @keydown="handleKeydown"
             ></textarea>
             <button
-                :disabled="!userInput.trim() || disabled"
+                :disabled="isActionDisabled"
                 class="send-button"
-                title="发送消息"
-                @click="handleSend"
+                :class="{ 'send-button--stop': canStop && loading }"
+                :title="canStop && loading ? '停止生成' : '发送消息'"
+                @click="handlePrimaryAction"
             >
                 <svg
                     v-if="!loading"
@@ -30,6 +31,14 @@
                         d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
                     />
                 </svg>
+                <svg
+                    v-else-if="canStop && !stopping"
+                    class="h-4 w-4"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <rect x="7" y="7" width="10" height="10" rx="2" />
+                </svg>
                 <div
                     v-else
                     class="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"
@@ -41,16 +50,19 @@
 
 <script setup lang="ts">
 import { useTextareaAutosize } from '@vueuse/core';
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
 interface Props {
     disabled?: boolean;
     loading?: boolean;
+    canStop?: boolean;
+    stopping?: boolean;
     commandPaletteOpen?: boolean;
 }
 
 interface Emits {
     send: [message: string];
+    stop: [];
     openCommandPalette: [];
     keydown: [event: KeyboardEvent];
     input: [value: string];
@@ -59,6 +71,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
     disabled: false,
     loading: false,
+    canStop: false,
+    stopping: false,
     commandPaletteOpen: false,
 });
 
@@ -126,6 +140,12 @@ function handleInput() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+    if (props.loading && props.canStop && event.key === 'Escape') {
+        event.preventDefault();
+        emit('stop');
+        return;
+    }
+
     if (props.commandPaletteOpen) {
         if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab', ' ', 'Escape'].includes(event.key)) {
             emit('keydown', event);
@@ -141,7 +161,7 @@ function handleKeydown(event: KeyboardEvent) {
 
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
-        handleSend();
+        handlePrimaryAction();
     }
 }
 
@@ -154,6 +174,23 @@ function handleSend() {
     emit('send', message);
     userInput.value = '';
     resetTextarea();
+}
+
+const isActionDisabled = computed(() => {
+    if (props.loading) {
+        return !props.canStop || props.stopping;
+    }
+
+    return !userInput.value.trim() || props.disabled;
+});
+
+function handlePrimaryAction() {
+    if (props.loading && props.canStop) {
+        emit('stop');
+        return;
+    }
+
+    handleSend();
 }
 
 function setValue(value: string) {
@@ -273,6 +310,25 @@ onMounted(() => {
         inset 0 1px 0 rgba(255, 255, 255, 0.96),
         0 14px 28px rgba(96, 165, 250, 0.24),
         0 0 0 1px rgba(191, 219, 254, 0.42);
+}
+
+.send-button--stop {
+    border-color: rgba(248, 113, 113, 0.9);
+    background: linear-gradient(180deg, rgba(254, 242, 242, 0.94) 0%, rgba(254, 202, 202, 0.84) 100%);
+    color: #dc2626;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        0 12px 26px rgba(248, 113, 113, 0.2),
+        0 0 0 1px rgba(254, 202, 202, 0.4);
+}
+
+.send-button--stop:hover:not(:disabled) {
+    color: #b91c1c;
+    background: linear-gradient(180deg, rgba(254, 226, 226, 0.96) 0%, rgba(252, 165, 165, 0.84) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.94),
+        0 14px 30px rgba(248, 113, 113, 0.24),
+        0 0 0 1px rgba(252, 165, 165, 0.42);
 }
 
 .send-button:disabled {

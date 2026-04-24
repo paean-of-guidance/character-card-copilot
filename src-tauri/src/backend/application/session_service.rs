@@ -1,3 +1,4 @@
+use crate::ai_cancellation::AI_CANCELLATION_MANAGER;
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::sessions::config::ContextBuilderOptions;
 use crate::backend::domain::{SessionInfo, SessionUnloadReason, TokenUsageStats};
@@ -223,6 +224,80 @@ impl SessionService {
         Self::generate_ai_response(app_handle, &mut session, "continue", effective_role_id).await
     }
 
+    pub fn interrupt_ai_response(uuid: Option<String>) -> Result<bool, String> {
+        let session_uuid = uuid
+            .or_else(crate::character_state::get_active_character)
+            .ok_or("没有活跃的角色会话")?;
+
+        AI_CANCELLATION_MANAGER.cancel_request(&session_uuid)
+    }
+
+    fn append_intermediate_messages(
+        session: &mut CharacterSession,
+        intermediate_messages: &[crate::ai_chat::ChatMessage],
+    ) {
+        for msg in intermediate_messages {
+            match msg.role {
+                crate::ai_chat::MessageRole::Assistant => {
+                    if msg.tool_calls.is_some() {
+                        let converted_calls = msg.tool_calls.as_ref().map(|calls| {
+                            calls
+                                .iter()
+                                .map(|call| crate::chat_history::ToolCall {
+                                    id: call.id.clone(),
+                                    r#type: call.call_type.clone(),
+                                    function: crate::chat_history::ToolFunction {
+                                        name: call.function.name.clone(),
+                                        arguments: call.function.arguments.clone(),
+                                    },
+                                    thought_signatures: call.thought_signatures.clone(),
+                                })
+                                .collect::<Vec<_>>()
+                        });
+                        session.add_assistant_message(
+                            msg.content.clone(),
+                            msg.reasoning_content.clone(),
+                            converted_calls,
+                        );
+                    }
+                }
+                crate::ai_chat::MessageRole::Tool => {
+                    if let Some(tool_call_id) = &msg.tool_call_id {
+                        session.add_tool_message(
+                            msg.content.clone(),
+                            tool_call_id.clone(),
+                            msg.name.clone(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn append_final_assistant_message(
+        session: &mut CharacterSession,
+        content: String,
+        reasoning_content: Option<String>,
+        tool_calls: Option<Vec<crate::chat_history::ToolCall>>,
+    ) -> Option<crate::chat_history::ChatMessage> {
+        let has_visible_content = !content.trim().is_empty()
+            || reasoning_content
+                .as_ref()
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+            || tool_calls
+                .as_ref()
+                .map(|calls| !calls.is_empty())
+                .unwrap_or(false);
+
+        if !has_visible_content {
+            return None;
+        }
+
+        Some(session.add_assistant_message(content, reasoning_content, tool_calls))
+    }
+
     fn build_context_options(ai_role: &AIRole) -> ContextBuilderOptions {
         let mut options = ContextBuilderOptions::default();
         options.ai_role = ai_role.context_role_template.clone();
@@ -257,6 +332,7 @@ impl SessionService {
                 role: crate::ai_chat::MessageRole::System,
                 content: ai_role.system_prompt.clone(),
                 name: None,
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -267,6 +343,7 @@ impl SessionService {
                 role: crate::ai_chat::MessageRole::System,
                 content: msg.content,
                 name: msg.name,
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -277,6 +354,7 @@ impl SessionService {
                 role: crate::ai_chat::MessageRole::System,
                 content: msg.content,
                 name: msg.name,
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -301,6 +379,7 @@ impl SessionService {
                             name: tc.function.name.clone(),
                             arguments: tc.function.arguments.clone(),
                         },
+                        thought_signatures: tc.thought_signatures.clone(),
                     })
                     .collect()
             });
@@ -309,6 +388,7 @@ impl SessionService {
                 role,
                 content: msg.content.clone(),
                 name: msg.name.clone(),
+                reasoning_content: msg.reasoning_content.clone(),
                 tool_calls: converted_tool_calls,
                 tool_call_id: msg.tool_call_id.clone(),
             }
@@ -319,6 +399,7 @@ impl SessionService {
                 role: crate::ai_chat::MessageRole::User,
                 content: current_msg.content,
                 name: current_msg.name,
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: current_msg.tool_call_id,
             });
@@ -361,7 +442,10 @@ impl SessionService {
                 msg.tool_calls.is_some(),
                 msg.tool_call_id
             );
-            if msg.content.is_empty() && msg.tool_calls.is_none() {
+            if msg.content.is_empty()
+                && msg.tool_calls.is_none()
+                && msg.reasoning_content.is_none()
+            {
                 crate::debug_log!("⚠️ 警告: 消息[{}]内容为空且没有tool_calls", idx);
             }
         }
@@ -391,6 +475,7 @@ impl SessionService {
 
         let start_time = std::time::Instant::now();
         let target_message_id = crate::file_utils::FileUtils::generate_uuid();
+        let mut cancellation = AI_CANCELLATION_MANAGER.begin_request(&session.uuid)?;
 
         let ai_response_result =
             match crate::ai_chat::AIChatService::create_chat_completion_streaming(
@@ -398,11 +483,38 @@ impl SessionService {
                 &request,
                 app_handle,
                 &target_message_id,
+                &mut cancellation,
             )
             .await
             {
                 Ok(response) => response,
-                Err(stream_error) => {
+                Err(crate::ai_chat::AIChatError::Aborted(aborted)) => {
+                    Self::append_intermediate_messages(session, &aborted.intermediate_messages);
+                    Self::append_final_assistant_message(
+                        session,
+                        aborted.content,
+                        aborted.reasoning_content,
+                        None,
+                    );
+
+                    session
+                        .save_history(app_handle)
+                        .await
+                        .map_err(|e| format!("保存中断历史记录失败: {}", e))?;
+
+                    SESSION_MANAGER.update_session(session.clone())?;
+
+                    EventBus::progress(
+                        app_handle,
+                        &session.uuid,
+                        operation_type,
+                        1.0,
+                        Some(&format!("{}操作已中断", operation_type)),
+                    )?;
+
+                    return Ok(());
+                }
+                Err(crate::ai_chat::AIChatError::Failed(stream_error)) => {
                     eprintln!("⚠️ 流式调用失败，回退非流式: {}", stream_error);
 
                     crate::ai_chat::AIChatService::create_chat_completion(
@@ -442,46 +554,25 @@ impl SessionService {
                         name: call.function.name.clone(),
                         arguments: call.function.arguments.clone(),
                     },
+                    thought_signatures: call.thought_signatures.clone(),
                 })
                 .collect::<Vec<_>>()
         });
 
         if let Some(intermediate_msgs) = &ai_response_result.intermediate_messages {
-            for msg in intermediate_msgs {
-                match msg.role {
-                    crate::ai_chat::MessageRole::Assistant => {
-                        if msg.tool_calls.is_some() {
-                            let converted_calls = msg.tool_calls.as_ref().map(|calls| {
-                                calls
-                                    .iter()
-                                    .map(|call| crate::chat_history::ToolCall {
-                                        id: call.id.clone(),
-                                        r#type: call.call_type.clone(),
-                                        function: crate::chat_history::ToolFunction {
-                                            name: call.function.name.clone(),
-                                            arguments: call.function.arguments.clone(),
-                                        },
-                                    })
-                                    .collect::<Vec<_>>()
-                            });
-                            session.add_assistant_message(msg.content.clone(), converted_calls);
-                        }
-                    }
-                    crate::ai_chat::MessageRole::Tool => {
-                        if let Some(tool_call_id) = &msg.tool_call_id {
-                            session.add_tool_message(
-                                msg.content.clone(),
-                                tool_call_id.clone(),
-                                msg.name.clone(),
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            Self::append_intermediate_messages(session, intermediate_msgs);
         }
 
-        let ai_response = session.add_assistant_message(ai_content.clone(), converted_tool_calls);
+        let ai_response = Self::append_final_assistant_message(
+            session,
+            ai_content.clone(),
+            ai_response_result
+                .choices
+                .first()
+                .and_then(|choice| choice.message.reasoning_content.clone()),
+            converted_tool_calls,
+        )
+        .ok_or("AI未返回可保存的响应")?;
 
         let converted_intermediate_msgs =
             ai_response_result
@@ -508,9 +599,11 @@ impl SessionService {
                                             name: call.function.name.clone(),
                                             arguments: call.function.arguments.clone(),
                                         },
+                                        thought_signatures: call.thought_signatures.clone(),
                                     })
                                     .collect()
                             }),
+                            reasoning_content: msg.reasoning_content.clone(),
                             tool_call_id: msg.tool_call_id.clone(),
                             name: msg.name.clone(),
                         })

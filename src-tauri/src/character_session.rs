@@ -82,6 +82,7 @@ impl CharacterSession {
             role: "user".to_string(),
             content,
             name: None,
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             timestamp: Some(
@@ -106,12 +107,14 @@ impl CharacterSession {
     pub fn add_assistant_message(
         &mut self,
         content: String,
+        reasoning_content: Option<String>,
         tool_calls: Option<Vec<crate::chat_history::ToolCall>>,
     ) -> ChatMessage {
         let message = ChatMessage {
             role: "assistant".to_string(),
             content,
             name: None,
+            reasoning_content,
             tool_calls,
             tool_call_id: None,
             timestamp: Some(
@@ -138,6 +141,7 @@ impl CharacterSession {
             role: "tool".to_string(),
             content,
             name,
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: Some(tool_call_id),
             timestamp: Some(

@@ -13,6 +13,7 @@ pub struct OpenAIMessage {
     pub role: String,
     pub content: String,
     pub name: Option<String>,
+    pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<crate::chat_history::ToolCall>>,
     pub tool_call_id: Option<String>,
 }
@@ -101,6 +102,7 @@ impl ContextBuilder {
             role: "user".to_string(),
             content: content.to_string(),
             name: None,
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         });
@@ -192,6 +194,7 @@ impl ContextBuilder {
             role: "system".to_string(),
             content,
             name: None,
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         }])
@@ -212,6 +215,7 @@ impl ContextBuilder {
             role: "assistant".to_string(),
             content: format!("character:\n{}", character_content),
             name: None,
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         });
@@ -226,6 +230,7 @@ impl ContextBuilder {
                     role: "assistant".to_string(),
                     content: format!("worldbook:\n{}", worldbook_content),
                     name: None,
+                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                 });
@@ -461,28 +466,91 @@ impl ContextBuilder {
     ) -> Result<Vec<OpenAIMessage>, String> {
         let mut messages = Vec::new();
         let mut used_tokens = 0;
+        let grouped_messages = Self::group_history_messages(chat_history);
 
-        // 从最新消息开始，倒序添加
-        for message in chat_history.iter().rev() {
-            let openai_message = OpenAIMessage {
-                role: message.role.clone(),
-                content: message.content.clone(),
-                name: message.name.clone(),
-                tool_calls: message.tool_calls.clone(),
-                tool_call_id: message.tool_call_id.clone(),
-            };
+        for group in grouped_messages.iter().rev() {
+            let group_tokens = group
+                .iter()
+                .map(|message| self.count_message_tokens(message))
+                .sum::<usize>();
 
-            let message_tokens = self.count_message_tokens(&openai_message);
-
-            if used_tokens + message_tokens <= token_limit {
-                messages.insert(0, openai_message);
-                used_tokens += message_tokens;
-            } else {
+            if used_tokens + group_tokens > token_limit {
                 break;
             }
+
+            messages.splice(0..0, group.iter().cloned());
+            used_tokens += group_tokens;
         }
 
         Ok(messages)
+    }
+
+    fn group_history_messages(chat_history: &[ChatMessage]) -> Vec<Vec<OpenAIMessage>> {
+        let mut groups = Vec::new();
+        let mut index = 0;
+
+        while index < chat_history.len() {
+            let message = &chat_history[index];
+
+            if message.role == "assistant" {
+                let tool_calls = message.tool_calls.clone().unwrap_or_default();
+                if !tool_calls.is_empty() {
+                    let expected_ids = tool_calls
+                        .iter()
+                        .map(|tool_call| tool_call.id.clone())
+                        .collect::<std::collections::HashSet<_>>();
+                    let mut matched_ids = std::collections::HashSet::new();
+                    let mut group = vec![Self::to_openai_message(message)];
+                    let mut cursor = index + 1;
+
+                    while cursor < chat_history.len() && chat_history[cursor].role == "tool" {
+                        let tool_message = &chat_history[cursor];
+                        if let Some(tool_call_id) = &tool_message.tool_call_id {
+                            if expected_ids.contains(tool_call_id) {
+                                matched_ids.insert(tool_call_id.clone());
+                                group.push(Self::to_openai_message(tool_message));
+                            }
+                        }
+                        cursor += 1;
+                    }
+
+                    if matched_ids.len() == expected_ids.len() {
+                        groups.push(group);
+                    } else {
+                        crate::debug_warn!(
+                            "跳过不完整的工具调用历史组，expected={}, matched={}",
+                            expected_ids.len(),
+                            matched_ids.len()
+                        );
+                    }
+
+                    index = cursor;
+                    continue;
+                }
+            }
+
+            if message.role == "tool" {
+                crate::debug_warn!("跳过孤立的 tool 历史消息");
+                index += 1;
+                continue;
+            }
+
+            groups.push(vec![Self::to_openai_message(message)]);
+            index += 1;
+        }
+
+        groups
+    }
+
+    fn to_openai_message(message: &ChatMessage) -> OpenAIMessage {
+        OpenAIMessage {
+            role: message.role.clone(),
+            content: message.content.clone(),
+            name: message.name.clone(),
+            reasoning_content: message.reasoning_content.clone(),
+            tool_calls: message.tool_calls.clone(),
+            tool_call_id: message.tool_call_id.clone(),
+        }
     }
 
     /// 处理占位符替换
