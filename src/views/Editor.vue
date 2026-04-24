@@ -659,83 +659,49 @@ onUnmounted(async () => {
 </script>
 
 <template>
-    <div class="h-[calc(100vh-5rem)] w-full px-2 py-2 bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)]">
+    <div class="h-[calc(100vh-5rem)] w-full px-2 py-2">
         <div class="flex h-full w-full gap-3">
             <!-- 左侧：角色信息显示 -->
             <div
                 ref="editorContainerRef"
-                class="rounded-[24px] border border-white/70 bg-white/75 p-4 overflow-y-auto shadow-[0_16px_40px_rgba(148,163,184,0.14)] backdrop-blur-xl"
+                class="liquid-panel p-4 overflow-y-auto"
                 :class="aiPanelVisible ? 'w-[70%]' : 'w-full'"
             >
                 <!-- 加载状态 -->
-                <div
-                    v-if="isLoading"
-                    class="flex items-center justify-center h-64"
-                >
-                    <div class="text-gray-600">加载角色数据中...</div>
+                <div v-if="isLoading" class="flex h-64 items-center justify-center">
+                    <div class="text-white/50">加载角色数据中...</div>
                 </div>
 
                 <div v-else>
                     <!-- 上方：角色卡预览 + 角色名 -->
                     <div class="mb-5">
-                        <div class="flex items-center gap-4 mb-4">
+                        <div class="mb-4 flex items-center gap-4">
                             <!-- 角色卡预览 -->
                             <div
-                                class="w-20 h-20 rounded-2xl flex items-center justify-center shadow-[0_8px_20px_rgba(148,163,184,0.18)] overflow-hidden cursor-pointer hover:opacity-80 transition-opacity relative border border-white/60"
+                                class="relative h-20 w-20 cursor-pointer overflow-hidden rounded-2xl border border-white/15 shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-80"
                                 @click="handleAvatarClick"
                                 :class="isUploading ? 'opacity-50' : ''"
                             >
-                                <!-- 上传中的加载状态 -->
-                                <div
-                                    v-if="isUploading"
-                                    class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center"
-                                >
-                                    <div class="text-white text-xs">
-                                        上传中...
-                                    </div>
+                                <div v-if="isUploading" class="absolute inset-0 flex items-center justify-center bg-black/60">
+                                    <div class="text-xs text-white">上传中...</div>
                                 </div>
-
-                                <!-- 显示上传的图片 -->
-                                <img
-                                    v-if="avatarSrc"
-                                    :src="avatarSrc"
-                                    alt="角色头像"
-                                    class="w-full h-full object-cover"
-                                />
-
-                                <!-- 默认头像 -->
-                                <div
-                                    v-else
-                                    class="w-full h-full bg-linear-to-br from-blue-400 to-purple-500 flex items-center justify-center"
-                                >
-                                    <span class="text-white text-2xl font-bold"
-                                        >角色</span
-                                    >
+                                <img v-if="avatarSrc" :src="avatarSrc" alt="角色头像" class="h-full w-full object-cover" />
+                                <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-600 to-violet-700">
+                                    <span class="text-lg font-bold text-white">角色</span>
                                 </div>
                             </div>
 
                             <!-- 上传提示 -->
-                            <div class="text-xs text-gray-500">
-                                点击头像上传图片
-                            </div>
+                            <div class="text-xs text-white/35">点击头像上传图片</div>
 
                             <!-- 角色名 -->
                             <div class="flex-1">
-                                <label
-                                    class="block text-sm font-semibold text-gray-700 mb-2"
-                                    >角色名称</label
-                                >
+                                <label class="mb-2 block text-sm font-semibold text-white/70">角色名称</label>
                                 <input
                                     v-model="characterData.name"
-                                    @blur="
-                                        updateField(
-                                            'name',
-                                            fullCharacterData?.card?.data?.name || '',
-                                            characterData.name,
-                                        )
-                                    "
+                                    @blur="updateField('name', fullCharacterData?.card?.data?.name || '', characterData.name)"
                                     type="text"
-                                    class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2 text-lg font-medium text-slate-800 placeholder-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
+                                    class="liquid-input text-lg font-medium"
                                     placeholder="请输入角色名称"
                                 />
                             </div>
@@ -743,23 +709,20 @@ onUnmounted(async () => {
                     </div>
 
                     <!-- 操作按钮区域 -->
-                    <div class="flex gap-3 mb-5 items-center">
+                    <div class="mb-5 flex items-center gap-3">
                         <button class="glass-btn glass-btn--danger" @click="deleteCharacter">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                             删除角色
                         </button>
                         <button class="glass-btn glass-btn--primary" @click="exportCharacter">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 11l3 3m0 0l3-3m-3 3V8" />
                             </svg>
                             导出角色
                         </button>
-                        <EditorModeSwitcher
-                            :mode="editorMode"
-                            @toggle-mode="toggleEditorMode"
-                        />
+                        <EditorModeSwitcher :mode="editorMode" @toggle-mode="toggleEditorMode" />
                     </div>
 
                     <!-- 角色编辑表单 -->
@@ -773,14 +736,8 @@ onUnmounted(async () => {
                     </div>
 
                     <!-- 世界书编辑器 -->
-                    <div
-                        v-else-if="editorMode === 'worldBook'"
-                        class="flex-1 min-h-0"
-                    >
-                        <WorldBookEditor
-                            v-if="characterUUID"
-                            :character-uuid="characterUUID"
-                        />
+                    <div v-else-if="editorMode === 'worldBook'" class="flex-1 min-h-0">
+                        <WorldBookEditor v-if="characterUUID" :character-uuid="characterUUID" />
                     </div>
                 </div>
             </div>
@@ -795,39 +752,9 @@ onUnmounted(async () => {
             />
 
             <!-- 显示/隐藏面板按钮 -->
-            <AIPanelToggleCard
-                v-if="!aiPanelVisible"
-                @toggle="toggleAIPanel"
-            />
+            <AIPanelToggleCard v-if="!aiPanelVisible" @toggle="toggleAIPanel" />
         </div>
     </div>
 </template>
 
-<style scoped>
-/* 自定义滚动条样式 */
-.overflow-y-auto::-webkit-scrollbar {
-    width: 6px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-/* 输入框焦点样式 */
-input:focus,
-textarea:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-</style>
+<style scoped></style>

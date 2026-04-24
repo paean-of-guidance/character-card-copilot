@@ -278,13 +278,14 @@ function handleApiCreated(api: ApiConfig) {
 </script>
 
 <template>
-  <div class="h-full min-h-0 w-full bg-gray-50 px-3 py-3 lg:px-4">
+  <div class="h-full min-h-0 w-full overflow-y-auto px-3 py-3 lg:px-4">
     <div class="mx-auto flex h-full min-h-0 max-w-7xl flex-col gap-3">
-      <div class="flex flex-wrap items-center gap-2 rounded-[24px] border border-gray-200 bg-white p-2 shadow-sm">
+      <!-- Tab 切换 -->
+      <div class="liquid-panel flex flex-wrap items-center gap-2 p-2">
         <button
           type="button"
           class="rounded-full px-4 py-2 text-sm font-medium transition"
-          :class="activeTab === 'api' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'"
+          :class="activeTab === 'api' ? 'bg-white/15 text-white/95 border border-white/20' : 'text-white/50 hover:bg-white/8 hover:text-white/75'"
           @click="activeTab = 'api'"
         >
           API 配置
@@ -292,7 +293,7 @@ function handleApiCreated(api: ApiConfig) {
         <button
           type="button"
           class="rounded-full px-4 py-2 text-sm font-medium transition"
-          :class="activeTab === 'ai-role' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'"
+          :class="activeTab === 'ai-role' ? 'bg-white/15 text-white/95 border border-white/20' : 'text-white/50 hover:bg-white/8 hover:text-white/75'"
           @click="activeTab = 'ai-role'"
         >
           AI 角色
@@ -301,326 +302,231 @@ function handleApiCreated(api: ApiConfig) {
 
       <div
         v-if="activeTab === 'api'"
-        class="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]"
+        class="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]"
       >
-      <section class="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-gray-200 bg-white p-3 shadow-sm">
-        <div class="shrink-0 flex items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-gray-900">API 配置</h2>
-            <p class="mt-1 text-sm text-gray-500">管理端点、模型、凭证与默认配置。</p>
-          </div>
-          <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-            {{ apis.length }} 个配置
-          </span>
-        </div>
-
-        <div class="mt-3 shrink-0">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 transition focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100"
-            placeholder="搜索名称、端点或模型"
-          />
-        </div>
-
-        <div class="mt-3 min-h-0 flex-1 overflow-hidden">
-          <ApiList
-            :selected-profile="selectedProfile"
-            :search-query="searchQuery"
-            @select="handleSelectApi"
-            @copy="handleCopyConfig"
-            @delete="handleDeleteConfig"
-            @create="handleOpenCreateDialog"
-          />
-        </div>
-      </section>
-
-      <section class="thin-scrollbar min-h-0 overflow-y-auto rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm">
-        <div v-if="hasSelection && draft && selectedApi" class="flex min-h-full flex-col">
-          <div class="flex flex-col gap-4 border-b border-gray-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
+        <!-- 左侧 API 列表 -->
+        <section class="liquid-panel flex min-h-0 flex-col overflow-hidden p-3">
+          <div class="flex shrink-0 items-start justify-between gap-3">
             <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-2xl font-semibold text-gray-900">{{ selectedApi.profile }}</h2>
-                <span
-                  class="rounded-full px-3 py-1 text-xs font-medium"
-                  :class="selectedApi.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
-                >
-                  {{ selectedApi.enabled ? '已启用' : '未启用' }}
-                </span>
-                <span
-                  v-if="selectedApi.default"
-                  class="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"
-                >
-                  默认配置
-                </span>
-                <span
-                  v-if="dirty"
-                  class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700"
-                >
-                  有未保存修改
-                </span>
-              </div>
-              <p class="mt-2 text-sm text-gray-500">
-                当前端点：{{ endpointSummary }}
-              </p>
+              <h2 class="text-lg font-semibold text-white/90">API 配置</h2>
+              <p class="mt-1 text-sm text-white/45">管理端点、模型、凭证与默认配置。</p>
             </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                @click="handleCopyConfig(selectedApi)"
-              >
-                <MdContentCopy class="h-4 w-4" />
-                复制
-              </button>
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
-                @click="handleDeleteConfig(selectedApi.profile)"
-              >
-                <MdDelete class="h-4 w-4" />
-                删除
-              </button>
-            </div>
+            <span class="liquid-badge">{{ apis.length }} 个配置</span>
           </div>
 
-          <div class="mt-5 grid flex-1 grid-cols-1 gap-4 2xl:grid-cols-2">
-            <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <h3 class="text-sm font-semibold text-gray-900">基本信息</h3>
-              <div class="mt-4 space-y-4">
-                <label class="block text-sm">
-                  <span class="mb-2 block font-medium text-gray-700">配置名称</span>
-                  <input
-                    :value="draft.profile"
-                    type="text"
-                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                    placeholder="例如 OpenAI 主账号"
-                    @input="patchDraftField('profile', ($event.target as HTMLInputElement).value)"
-                  />
-                </label>
+          <div class="mt-3 shrink-0">
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="liquid-input"
+              placeholder="搜索名称、端点或模型"
+            />
+          </div>
 
-                <label class="block text-sm">
-                  <span class="mb-2 block font-medium text-gray-700">Provider</span>
-                  <select
-                    :value="draft.provider"
-                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                    @change="handleProviderChange(($event.target as HTMLSelectElement).value as ApiProvider)"
-                  >
-                    <option v-for="option in providerOptions" :key="option.value" :value="option.value">
-                      {{ option.label }}
-                    </option>
-                  </select>
-                </label>
+          <div class="mt-3 min-h-0 flex-1 overflow-hidden">
+            <ApiList
+              :selected-profile="selectedProfile"
+              :search-query="searchQuery"
+              @select="handleSelectApi"
+              @copy="handleCopyConfig"
+              @delete="handleDeleteConfig"
+              @create="handleOpenCreateDialog"
+            />
+          </div>
+        </section>
 
-                <label class="block text-sm">
-                  <span class="mb-2 block font-medium text-gray-700">API 端点</span>
-                  <input
-                    :value="draft.base_url"
-                    type="text"
-                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                    placeholder="https://api.example.com/v1"
-                    @input="patchDraftField('base_url', ($event.target as HTMLInputElement).value)"
-                  />
-                </label>
-
-                <div class="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
-                  Base URL 将按 provider 分流；OpenAI Responses、Claude、Gemini 不再共用同一套端点约定。
+        <!-- 右侧详情 -->
+        <section class="liquid-panel-elevated min-h-0 overflow-y-auto p-4">
+          <div v-if="hasSelection && draft && selectedApi" class="flex min-h-full flex-col">
+            <!-- 配置头部 -->
+            <div class="flex flex-col gap-4 border-b border-white/8 pb-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h2 class="text-2xl font-semibold text-white/90">{{ selectedApi.profile }}</h2>
+                  <span class="liquid-badge" :class="selectedApi.enabled ? 'liquid-badge--success' : ''">
+                    {{ selectedApi.enabled ? '已启用' : '未启用' }}
+                  </span>
+                  <span v-if="selectedApi.default" class="liquid-badge liquid-badge--primary">默认配置</span>
+                  <span v-if="dirty" class="liquid-badge liquid-badge--warning">有未保存修改</span>
                 </div>
+                <p class="mt-2 text-sm text-white/40">当前端点：{{ endpointSummary }}</p>
               </div>
-            </div>
 
-            <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <h3 class="text-sm font-semibold text-gray-900">凭证与模型</h3>
-              <div class="mt-4 space-y-4">
-                <label class="block text-sm">
-                  <span class="mb-2 block font-medium text-gray-700">API 密钥</span>
-                  <input
-                    :value="draft.api_key"
-                    type="password"
-                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                    placeholder="sk-..."
-                    @input="patchDraftField('api_key', ($event.target as HTMLInputElement).value)"
-                  />
-                </label>
-
-                <div class="text-sm">
-                  <span class="mb-2 block font-medium text-gray-700">模型</span>
-                  <ModelSelect
-                    :api-config="draft"
-                    :model-value="draft.model"
-                    @update:modelValue="patchDraftField('model', $event)"
-                    @update:modelMeta="handleModelMetaUpdate"
-                  />
-                </div>
-
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label class="block text-sm">
-                    <span class="mb-2 block font-medium text-gray-700">Context Window</span>
-                    <input
-                      :value="draft.context_window"
-                      type="number"
-                      min="1"
-                      step="1"
-                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                      @input="patchDraftField('context_window', Number(($event.target as HTMLInputElement).value) || 65534)"
-                    />
-                    <p class="mt-2 text-xs text-gray-500">模型列表未返回时默认使用 65534，你也可以手动覆盖。</p>
-                  </label>
-
-                  <label class="block text-sm">
-                    <span class="mb-2 block font-medium text-gray-700">Max Tokens</span>
-                    <input
-                      :value="draft.max_tokens"
-                      type="number"
-                      min="1"
-                      step="1"
-                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                      @input="patchDraftField('max_tokens', Number(($event.target as HTMLInputElement).value) || 8192)"
-                    />
-                    <p class="mt-2 text-xs text-gray-500">模型列表未返回时默认使用 8192，你也可以手动覆盖。</p>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <h3 class="text-sm font-semibold text-gray-900">连通性</h3>
-              <div class="mt-4 space-y-3">
-                <div
-                  v-if="saveError"
-                  class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-                >
-                  {{ saveError }}
-                </div>
-
-                <div
-                  v-if="lastTestResult"
-                  class="rounded-2xl border px-4 py-3 text-sm"
-                  :class="lastTestResult.success ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'"
-                >
-                  <div>{{ lastTestResult.message }}</div>
-                  <div v-if="lastTestResult.error" class="mt-2 whitespace-pre-wrap break-all text-xs opacity-80">
-                    {{ lastTestResult.error }}
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    class="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    :disabled="testing || !hasDraftCredentials"
-                    @click="handleTestConnection"
-                  >
-                    <MdWifiTethering class="h-4 w-4" />
-                    {{ testing ? '测试中...' : '测试连接' }}
-                  </button>
-
-                  <button
-                    type="button"
-                    class="rounded-2xl border px-4 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
-                    :class="selectedApi.enabled ? 'border-gray-200 text-gray-700 hover:bg-gray-100' : 'border-green-200 text-green-700 hover:bg-green-50'"
-                    :disabled="!canEnableDraft"
-                    @click="handleToggleEnabled"
-                  >
-                    {{ selectedApi.enabled ? '禁用配置' : '启用配置' }}
-                  </button>
-                </div>
-
-                <button
-                  v-if="canSetDefault"
-                  type="button"
-                  class="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-                  @click="handleSetDefault"
-                >
-                  设为默认配置
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" class="glass-btn glass-btn--neutral" @click="handleCopyConfig(selectedApi)">
+                  <MdContentCopy class="h-4 w-4" /> 复制
+                </button>
+                <button type="button" class="glass-btn glass-btn--danger" @click="handleDeleteConfig(selectedApi.profile)">
+                  <MdDelete class="h-4 w-4" /> 删除
                 </button>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-red-100 bg-red-50 p-4">
-              <h3 class="text-sm font-semibold text-red-700">危险操作提示</h3>
-              <p class="mt-3 text-sm text-red-600">
-                删除会永久移除该配置；禁用配置会同时取消默认状态。若刚修改过端点、密钥或模型，请重新测试连接后再启用。
+            <!-- 配置表单 -->
+            <div class="mt-5 grid flex-1 grid-cols-1 gap-4 2xl:grid-cols-2">
+              <!-- 基本信息 -->
+              <div class="settings-card">
+                <h3 class="settings-card-title">基本信息</h3>
+                <div class="mt-4 space-y-4">
+                  <label class="block text-sm">
+                    <span class="settings-label">配置名称</span>
+                    <input :value="draft.profile" type="text" class="liquid-input mt-2" placeholder="例如 OpenAI 主账号"
+                      @input="patchDraftField('profile', ($event.target as HTMLInputElement).value)" />
+                  </label>
+                  <label class="block text-sm">
+                    <span class="settings-label">Provider</span>
+                    <select :value="draft.provider" class="liquid-input mt-2"
+                      @change="handleProviderChange(($event.target as HTMLSelectElement).value as ApiProvider)">
+                      <option v-for="option in providerOptions" :key="option.value" :value="option.value" class="bg-slate-900">
+                        {{ option.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="block text-sm">
+                    <span class="settings-label">API 端点</span>
+                    <input :value="draft.base_url" type="text" class="liquid-input mt-2" placeholder="https://api.example.com/v1"
+                      @input="patchDraftField('base_url', ($event.target as HTMLInputElement).value)" />
+                  </label>
+                  <div class="rounded-xl border border-white/8 bg-white/4 px-4 py-3 text-xs text-white/35">
+                    Base URL 将按 provider 分流；OpenAI Responses、Claude、Gemini 不再共用同一套端点约定。
+                  </div>
+                </div>
+              </div>
+
+              <!-- 凭证与模型 -->
+              <div class="settings-card">
+                <h3 class="settings-card-title">凭证与模型</h3>
+                <div class="mt-4 space-y-4">
+                  <label class="block text-sm">
+                    <span class="settings-label">API 密钥</span>
+                    <input :value="draft.api_key" type="password" class="liquid-input mt-2" placeholder="sk-..."
+                      @input="patchDraftField('api_key', ($event.target as HTMLInputElement).value)" />
+                  </label>
+                  <div class="text-sm">
+                    <span class="settings-label">模型</span>
+                    <ModelSelect :api-config="draft" :model-value="draft.model" class="mt-2"
+                      @update:modelValue="patchDraftField('model', $event)"
+                      @update:modelMeta="handleModelMetaUpdate" />
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label class="block text-sm">
+                      <span class="settings-label">Context Window</span>
+                      <input :value="draft.context_window" type="number" min="1" step="1" class="liquid-input mt-2"
+                        @input="patchDraftField('context_window', Number(($event.target as HTMLInputElement).value) || 65534)" />
+                      <p class="mt-2 text-xs text-white/30">默认 65534，可手动覆盖。</p>
+                    </label>
+                    <label class="block text-sm">
+                      <span class="settings-label">Max Tokens</span>
+                      <input :value="draft.max_tokens" type="number" min="1" step="1" class="liquid-input mt-2"
+                        @input="patchDraftField('max_tokens', Number(($event.target as HTMLInputElement).value) || 8192)" />
+                      <p class="mt-2 text-xs text-white/30">默认 8192，可手动覆盖。</p>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 连通性 -->
+              <div class="settings-card">
+                <h3 class="settings-card-title">连通性</h3>
+                <div class="mt-4 space-y-3">
+                  <div v-if="saveError" class="rounded-xl border border-red-400/25 bg-red-500/12 px-4 py-3 text-sm text-red-300">
+                    {{ saveError }}
+                  </div>
+                  <div v-if="lastTestResult" class="rounded-xl border px-4 py-3 text-sm"
+                    :class="lastTestResult.success ? 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300' : 'border-yellow-400/25 bg-yellow-500/12 text-yellow-300'"
+                  >
+                    <div>{{ lastTestResult.message }}</div>
+                    <div v-if="lastTestResult.error" class="mt-2 whitespace-pre-wrap break-all text-xs opacity-75">
+                      {{ lastTestResult.error }}
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button type="button" class="glass-btn glass-btn--primary justify-center py-3 disabled:opacity-40 disabled:cursor-not-allowed"
+                      :disabled="testing || !hasDraftCredentials" @click="handleTestConnection">
+                      <MdWifiTethering class="h-4 w-4" />
+                      {{ testing ? '测试中...' : '测试连接' }}
+                    </button>
+                    <button type="button"
+                      class="glass-btn justify-center py-3 disabled:opacity-40 disabled:cursor-not-allowed"
+                      :class="selectedApi.enabled ? 'glass-btn--neutral' : 'glass-btn--primary'"
+                      :disabled="!canEnableDraft" @click="handleToggleEnabled">
+                      {{ selectedApi.enabled ? '禁用配置' : '启用配置' }}
+                    </button>
+                  </div>
+                  <button v-if="canSetDefault" type="button" class="glass-btn glass-btn--primary w-full justify-center py-3" @click="handleSetDefault">
+                    设为默认配置
+                  </button>
+                </div>
+              </div>
+
+              <!-- 危险操作 -->
+              <div class="settings-card settings-card--danger">
+                <h3 class="text-sm font-semibold text-red-300">危险操作提示</h3>
+                <p class="mt-3 text-sm text-red-400/75">
+                  删除会永久移除该配置；禁用配置会同时取消默认状态。若刚修改过端点、密钥或模型，请重新测试连接后再启用。
+                </p>
+              </div>
+            </div>
+
+            <!-- 底部保存栏 -->
+            <div class="mt-5 flex flex-col gap-3 border-t border-white/8 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p class="text-sm text-white/35">
+                {{ dirty ? '有未保存修改，建议先保存再切换或设默认。' : '当前草稿与已保存配置保持一致。' }}
               </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" class="glass-btn glass-btn--neutral disabled:opacity-40 disabled:cursor-not-allowed"
+                  :disabled="!dirty || saving" @click="handleDiscardDraft">
+                  放弃修改
+                </button>
+                <button type="button" class="glass-btn glass-btn--primary disabled:opacity-40 disabled:cursor-not-allowed"
+                  :disabled="!dirty || saving" @click="handleSaveDraft">
+                  <MdSave class="h-4 w-4" />
+                  {{ saving ? '保存中...' : '保存配置' }}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div class="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-gray-500">
-              {{ dirty ? '有未保存修改，建议先保存再切换或设默认。' : '当前草稿与已保存配置保持一致。' }}
+          <!-- 空状态 -->
+          <div v-else class="flex min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/12 bg-white/3 px-6 text-center">
+            <h2 class="text-xl font-semibold text-white/75">选择一个 API 配置</h2>
+            <p class="mt-2 max-w-md text-sm text-white/40">
+              从左侧选择已有配置开始编辑，或者先创建一个新的 API 配置。
             </p>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="!dirty || saving"
-                @click="handleDiscardDraft"
-              >
-                放弃修改
-              </button>
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-full bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="!dirty || saving"
-                @click="handleSaveDraft"
-              >
-                <MdSave class="h-4 w-4" />
-                {{ saving ? '保存中...' : '保存配置' }}
-              </button>
-            </div>
+            <button type="button" class="glass-btn glass-btn--primary mt-6" @click="handleOpenCreateDialog">
+              创建第一个配置
+            </button>
           </div>
-        </div>
-
-        <div v-else class="flex min-h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
-          <h2 class="text-xl font-semibold text-gray-900">选择一个 API 配置</h2>
-          <p class="mt-2 max-w-md text-sm text-gray-500">
-            从左侧选择已有配置开始编辑，或者先创建一个新的 API 配置。新的配置会以未启用状态创建，建议先填写信息并完成连接测试。
-          </p>
-          <button
-            type="button"
-            class="mt-6 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-            @click="handleOpenCreateDialog"
-          >
-            创建第一个配置
-          </button>
-        </div>
-      </section>
-
+        </section>
       </div>
 
       <AIRoleSettingsPanel v-else />
     </div>
 
-    <NewApiDialog
-      v-if="showNewApiDialog"
-      @created="handleApiCreated"
-      @cancel="showNewApiDialog = false"
-    />
+    <NewApiDialog v-if="showNewApiDialog" @created="handleApiCreated" @cancel="showNewApiDialog = false" />
   </div>
 </template>
 
 <style scoped>
-.thin-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+.settings-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1rem;
+  backdrop-filter: blur(16px);
 }
-
-.thin-scrollbar::-webkit-scrollbar {
-  width: 5px;
+.settings-card--danger {
+  border-color: rgba(239, 68, 68, 0.20);
+  background: rgba(239, 68, 68, 0.08);
 }
-
-.thin-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+.settings-card-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.80);
 }
-
-.thin-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  background-color: #cbd5e1;
-}
-
-.thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+.settings-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
 }
 </style>

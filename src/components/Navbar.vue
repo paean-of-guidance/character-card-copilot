@@ -18,19 +18,19 @@ function handleSettings() {
 </script>
 
 <template>
-    <nav class="sticky top-0 z-30 shrink-0 border-b border-gray-200 bg-white px-6 py-2 shadow-md">
+    <nav class="liquid-nav sticky top-0 z-30 shrink-0 px-6 py-2">
         <div class="flex items-center justify-between">
             <!-- 左侧：返回按钮 + 页面名称 -->
             <div class="flex items-center gap-3">
                 <button
                     v-if="appStore.canGoBack"
                     @click="handleBack"
-                    class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                    class="rounded-full p-2 text-white/75 transition-colors hover:bg-white/10 hover:text-white/95"
                     aria-label="返回上一级"
                 >
-                    <MdKeyboardArrowLeft class="w-6 h-6 text-gray-700" />
+                    <MdKeyboardArrowLeft class="h-6 w-6" />
                 </button>
-                <h1 class="text-xl font-semibold text-gray-800">
+                <h1 class="text-xl font-semibold tracking-tight text-white/90">
                     {{ appStore.pageTitle }}
                 </h1>
             </div>
@@ -38,10 +38,10 @@ function handleSettings() {
             <!-- 右侧：设置按钮 -->
             <button
                 @click="handleSettings"
-                class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                class="rounded-full p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white/90"
                 aria-label="设置"
             >
-                <MdSettings class="w-6 h-6 text-gray-700" />
+                <MdSettings class="h-6 w-6" />
             </button>
         </div>
     </nav>

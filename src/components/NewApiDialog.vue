@@ -81,64 +81,64 @@ function handleInput() {
 </script>
 
 <template>
-  <div class="dialog-overlay">
-    <div class="dialog">
-      <div class="dialog-header">
-        <h2 class="text-xl font-semibold text-gray-800">新建 API 配置</h2>
-        <p class="mt-1 text-sm text-gray-500">先选择 provider 和名称，随后在详情面板中补全 Base URL、密钥与模型。</p>
+  <div class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/65 backdrop-blur-md">
+    <div class="liquid-modal w-full max-w-md overflow-hidden">
+      <div class="px-6 py-4 border-b border-white/8">
+        <h2 class="text-xl font-semibold text-white/90">新建 API 配置</h2>
+        <p class="mt-1 text-sm text-white/45">先选择 provider 和名称，随后在详情面板中补全 Base URL、密钥与模型。</p>
       </div>
 
-      <div class="dialog-body">
-        <div class="form-group">
-          <label for="provider" class="form-label">
-            Provider <span class="text-red-500">*</span>
+      <div class="px-6 py-5 space-y-5">
+        <div class="space-y-2">
+          <label for="provider" class="block text-sm font-medium text-white/70">
+            Provider <span class="text-red-400">*</span>
           </label>
           <select
             id="provider"
             v-model="provider"
-            class="form-input"
+            class="dialog-input"
             :disabled="loading"
           >
-            <option value="open_ai_compatible">OpenAI Compatible</option>
-            <option value="open_ai_responses">OpenAI Responses</option>
-            <option value="claude">Claude</option>
-            <option value="gemini_v1_beta">Gemini v1beta</option>
+            <option value="open_ai_compatible" class="bg-slate-900">OpenAI Compatible</option>
+            <option value="open_ai_responses" class="bg-slate-900">OpenAI Responses</option>
+            <option value="claude" class="bg-slate-900">Claude</option>
+            <option value="gemini_v1_beta" class="bg-slate-900">Gemini v1beta</option>
           </select>
         </div>
 
-        <div class="form-group">
-          <label for="profile-name" class="form-label">
-            API配置名称 <span class="text-red-500">*</span>
+        <div class="space-y-2">
+          <label for="profile-name" class="block text-sm font-medium text-white/70">
+            API配置名称 <span class="text-red-400">*</span>
           </label>
           <input
             id="profile-name"
             v-model="profileName"
             type="text"
-            class="form-input"
+            class="dialog-input"
             placeholder="请输入API配置名称"
             :disabled="loading"
             @input="handleInput"
             @keydown.enter="handleCreate"
           />
-          <div v-if="error" class="form-error">
+          <div v-if="error" class="text-sm text-red-300 mt-1">
             {{ error }}
           </div>
-          <div class="form-hint">
+          <div class="text-xs text-white/35 mt-1">
             配置名称用于识别不同的API设置，建议使用有意义的名称。
           </div>
         </div>
       </div>
 
-      <div class="dialog-footer">
+      <div class="px-6 py-4 border-t border-white/8 flex justify-end gap-3">
         <button
-          class="rounded-full border border-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-50"
+          class="glass-btn glass-btn--neutral"
           :disabled="loading"
           @click="handleCancel"
         >
           取消
         </button>
         <button
-          class="rounded-full bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700"
+          class="glass-btn glass-btn--primary"
           :disabled="loading || !profileName.trim()"
           @click="handleCreate"
         >
@@ -150,120 +150,30 @@ function handleInput() {
 </template>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow: hidden;
-}
-
-.dialog-header {
-  padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.dialog-body {
-  padding: 1.5rem;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.dialog-footer {
-  padding: 1.5rem;
-  border-top: 1px solid #e5e7eb;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-label {
-  display: block;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
-
-.form-input {
+.dialog-input {
   width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.90);
+  border-radius: 12px;
   font-size: 0.875rem;
-  transition: border-color 0.2s;
+  padding: 0.625rem 1rem;
+  transition: all 0.2s ease;
 }
 
-.form-input:focus {
+.dialog-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
 }
 
-.form-input:disabled {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
+.dialog-input::placeholder {
+  color: rgba(255, 255, 255, 0.28);
 }
 
-.form-error {
-  color: #ef4444;
-  font-size: 0.875rem;
-  margin-top: 0.25rem;
-}
-
-.form-hint {
-  color: #6b7280;
-  font-size: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.btn {
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn:disabled {
+.dialog-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: #e5e7eb;
-}
-
-.btn-primary {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
 }
 </style>

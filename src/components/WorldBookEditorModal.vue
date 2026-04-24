@@ -95,23 +95,23 @@ function handleClose() {
         @click="handleClose"
       >
         <!-- 背景遮罩 -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+        <div class="absolute inset-0 bg-black/65 backdrop-blur-md"></div>
 
         <!-- Modal内容 -->
         <div
-          class="relative rounded-[24px] border border-white/70 bg-white/95 shadow-[0_24px_60px_rgba(148,163,184,0.25)] backdrop-blur-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+          class="liquid-modal relative w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
           @click.stop
         >
           <!-- 头部 -->
-          <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-slate-900">
+          <div class="px-6 py-4 border-b border-white/8 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white/90">
               {{ isCreatingNew ? '新建世界书条目' : '编辑世界书条目' }}
             </h3>
             <button
               @click="handleClose"
-              class="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              class="p-2 hover:bg-white/10 rounded-xl transition-colors"
             >
-              <MdClose class="w-5 h-5 text-slate-400" />
+              <MdClose class="w-5 h-5 text-white/40" />
             </button>
           </div>
 
@@ -121,9 +121,9 @@ function handleClose() {
 
             <!-- 条目名称 -->
             <div>
-              <label class="text-sm font-semibold text-slate-700 mb-2 block">
+              <label class="text-sm font-semibold text-white/70 mb-2 block">
                 条目名称
-                <span class="text-xs font-normal text-slate-400 ml-1">(可选)</span>
+                <span class="text-xs font-normal text-white/35 ml-1">(可选)</span>
               </label>
               <input
                 v-model="formData.name"
@@ -135,7 +135,7 @@ function handleClose() {
 
             <!-- 关键词 -->
             <div>
-              <label class="text-sm font-semibold text-slate-700 mb-2 block">
+              <label class="text-sm font-semibold text-white/70 mb-2 block">
                 关键词 <span class="text-red-400">*</span>
               </label>
               <div class="space-y-2">
@@ -143,10 +143,10 @@ function handleClose() {
                   <span
                     v-for="(key, index) in formData.keys"
                     :key="index"
-                    class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                    class="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 border border-indigo-400/25 px-2.5 py-0.5 text-xs font-medium text-indigo-300"
                   >
                     {{ key }}
-                    <button type="button" class="text-blue-400 hover:text-blue-700" @click="removeKey(index)">
+                    <button type="button" class="text-indigo-400/60 hover:text-indigo-200" @click="removeKey(index)">
                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                       </svg>
@@ -174,7 +174,7 @@ function handleClose() {
 
             <!-- 内容 -->
             <div>
-              <label class="text-sm font-semibold text-slate-700 mb-2 block">
+              <label class="text-sm font-semibold text-white/70 mb-2 block">
                 内容 <span class="text-red-400">*</span>
               </label>
               <textarea
@@ -187,9 +187,9 @@ function handleClose() {
 
             <!-- 备注 -->
             <div>
-              <label class="text-sm font-semibold text-slate-700 mb-2 block">
+              <label class="text-sm font-semibold text-white/70 mb-2 block">
                 备注
-                <span class="text-xs font-normal text-slate-400 ml-1">(可选)</span>
+                <span class="text-xs font-normal text-white/35 ml-1">(可选)</span>
               </label>
               <textarea
                 v-model="formData.comment"
@@ -203,16 +203,16 @@ function handleClose() {
             <div class="flex items-center gap-3">
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.enabled" type="checkbox" class="sr-only peer" />
-                <div class="w-9 h-5 bg-slate-200 peer-focus:ring-2 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                <div class="w-9 h-5 bg-white/15 peer-focus:ring-2 peer-focus:ring-violet-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500"></div>
               </label>
-              <span class="text-sm font-medium text-slate-700">启用此条目</span>
+              <span class="text-sm font-medium text-white/75">启用此条目</span>
             </div>
 
             <!-- ═══ 高级设置 ═══ -->
-            <div class="pt-3 border-t border-slate-100">
+            <div class="pt-3 border-t border-white/8">
               <button
                 type="button"
-                class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors"
+                class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/35 hover:text-white/60 transition-colors"
                 @click="showAdvanced = !showAdvanced"
               >
                 <svg
@@ -230,19 +230,19 @@ function handleClose() {
               <div v-if="showAdvanced" class="mt-4 space-y-4">
                 <!-- 次要关键词 -->
                 <div>
-                  <label class="text-sm font-semibold text-slate-700 mb-2 block">
+                  <label class="text-sm font-semibold text-white/70 mb-2 block">
                     次要关键词
-                    <span class="text-xs font-normal text-slate-400 ml-1">(选择性触发时使用)</span>
+                    <span class="text-xs font-normal text-white/35 ml-1">(选择性触发时使用)</span>
                   </label>
                   <div class="space-y-2">
                     <div class="flex flex-wrap gap-1.5 mb-2">
                       <span
                         v-for="(key, index) in formData.secondary_keys"
                         :key="index"
-                        class="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700"
+                        class="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-400/25 px-2.5 py-0.5 text-xs font-medium text-violet-300"
                       >
                         {{ key }}
-                        <button type="button" class="text-purple-400 hover:text-purple-700" @click="removeSecondaryKey(index)">
+                        <button type="button" class="text-violet-400/60 hover:text-violet-200" @click="removeSecondaryKey(index)">
                           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                           </svg>
@@ -271,7 +271,7 @@ function handleClose() {
                 <!-- 优先级 & 插入位置 -->
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <label class="text-sm font-semibold text-slate-700 mb-2 block">优先级</label>
+                    <label class="text-sm font-semibold text-white/70 mb-2 block">优先级</label>
                     <input
                       v-model.number="formData.priority"
                       type="number"
@@ -281,10 +281,10 @@ function handleClose() {
                     />
                   </div>
                   <div>
-                    <label class="text-sm font-semibold text-slate-700 mb-2 block">插入位置</label>
+                    <label class="text-sm font-semibold text-white/70 mb-2 block">插入位置</label>
                     <select v-model="formData.position" class="modal-input">
-                      <option value="before_char">角色定义之前</option>
-                      <option value="after_char">角色定义之后</option>
+                      <option value="before_char" class="bg-slate-900">角色定义之前</option>
+                      <option value="after_char" class="bg-slate-900">角色定义之后</option>
                     </select>
                   </div>
                 </div>
@@ -293,16 +293,16 @@ function handleClose() {
                 <div class="flex items-center gap-3">
                   <label class="relative inline-flex items-center cursor-pointer">
                     <input v-model="formData.constant" type="checkbox" class="sr-only peer" />
-                    <div class="w-9 h-5 bg-slate-200 peer-focus:ring-2 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                    <div class="w-9 h-5 bg-white/15 peer-focus:ring-2 peer-focus:ring-amber-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
                   </label>
-                  <span class="text-sm font-medium text-slate-700">常驻条目 (总是生效)</span>
+                  <span class="text-sm font-medium text-white/75">常驻条目 (总是生效)</span>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- 底部按钮 -->
-          <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+          <div class="px-6 py-4 border-t border-white/8 flex items-center justify-between">
             <button
               v-if="!isCreatingNew"
               @click="$emit('delete')"
@@ -346,13 +346,34 @@ function handleClose() {
   transform: scale(0.95);
 }
 
-.modal-input {
-  @apply w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 transition-all duration-200;
-  @apply focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10;
+.modal-input,
+.modal-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.90);
+  border-radius: 12px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  padding: 0.625rem 1rem;
+}
+
+.modal-input:focus,
+.modal-textarea:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.modal-input::placeholder,
+.modal-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.28);
 }
 
 .modal-textarea {
-  @apply w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3 text-sm leading-relaxed text-slate-800 placeholder-slate-300 resize-none transition-all duration-200;
-  @apply focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10;
+  padding: 0.75rem 1rem;
+  line-height: 1.6;
+  resize: none;
 }
 </style>

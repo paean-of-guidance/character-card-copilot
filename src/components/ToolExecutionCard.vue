@@ -2,42 +2,42 @@
     <div class="min-w-0 max-w-[80%] text-left">
         <button
             type="button"
-            class="group inline-flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            class="group inline-flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-xs text-white/40 transition-colors hover:bg-white/8 hover:text-white/65"
             :aria-expanded="expanded"
             :aria-label="expanded ? '收起工具调用详情' : '展开工具调用详情'"
             @click="expanded = !expanded"
         >
             <MdChevronRight
                 :class="[
-                    'h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200',
+                    'h-4 w-4 shrink-0 text-white/30 transition-transform duration-200',
                     expanded && 'rotate-90',
                 ]"
             />
-            <MdBuild class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+            <MdBuild class="h-3.5 w-3.5 shrink-0 text-white/30" />
             <span class="min-w-0 truncate">{{ summaryText }}</span>
         </button>
 
         <div
             v-if="expanded"
-            class="mt-2 ml-5 w-full max-w-3xl min-w-0 rounded-2xl border border-gray-200 bg-gray-100/90 p-3 text-xs text-gray-700 shadow-sm"
+            class="mt-2 ml-5 w-full max-w-3xl min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-white/70 shadow-sm"
         >
             <div class="space-y-3">
                 <section>
-                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/35">
                         ID
                     </div>
                     <pre class="tool-block">{{ toolCallId }}</pre>
                 </section>
 
                 <section>
-                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/35">
                         ARGS
                     </div>
                     <pre class="tool-block">{{ argsText }}</pre>
                 </section>
 
                 <section>
-                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/35">
                         RESULT
                     </div>
                     <pre class="tool-block">{{ resultText }}</pre>
@@ -393,8 +393,9 @@ function stripMarkdownFences(value: string): string {
     overflow-wrap: anywhere;
     word-wrap: break-word;
     border-radius: 0.875rem;
-    border: 1px solid #e5e7eb;
-    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.75);
     padding: 0.75rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
     line-height: 1.5;

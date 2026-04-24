@@ -215,75 +215,42 @@ defineExpose({
     <Transition name="command-palette" @before-enter="selectedIndex = 0">
         <div
             v-if="visible"
-            class="absolute bottom-full left-0 right-0 mb-3 bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden z-50 min-h-[120px]"
+            class="liquid-modal absolute bottom-full left-0 right-0 mb-3 z-50 min-h-[120px] overflow-hidden"
             role="listbox"
             aria-label="命令面板"
             :aria-activedescendant="`command-${selectedIndex}`"
             aria-expanded="true"
         >
-            <!-- 命令列表 -->
-            <div
-                ref="commandListRef"
-                class="max-h-64 overflow-y-auto"
-                role="presentation"
-            >
-                <!-- 命令项 -->
+            <div ref="commandListRef" class="max-h-64 overflow-y-auto" role="presentation">
                 <div
                     v-for="(command, index) in filteredCommands"
                     :key="command.id"
                     :id="`command-${index}`"
-                    class="flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-150 ease-in-out border-l-2"
+                    class="flex cursor-pointer items-center gap-3 border-l-2 px-4 py-3 transition-all duration-150 ease-in-out"
                     :class="{
-                        'bg-blue-50 border-l-blue-500': index === selectedIndex,
-                        'border-transparent hover:bg-gray-50 hover:border-l-gray-300':
-                            index !== selectedIndex,
+                        'border-l-violet-400 bg-violet-500/15': index === selectedIndex,
+                        'border-transparent hover:border-l-white/20 hover:bg-white/6': index !== selectedIndex,
                     }"
                     role="option"
                     :aria-selected="index === selectedIndex"
                     @click="handleCommandClick(command, index)"
                     @mouseenter="handleCommandMouseEnter(index)"
                 >
-                    <!-- 命令图标 -->
-                    <div
-                        v-if="command.icon"
-                        class="shrink-0 w-5 h-5 text-gray-400"
-                    >
+                    <div v-if="command.icon" class="h-5 w-5 shrink-0 text-white/40">
                         <component :is="getCommandIcon(command)" />
                     </div>
-
-                    <!-- 命令内容 -->
-                    <div class="flex-1 min-w-0">
+                    <div class="min-w-0 flex-1">
                         <div class="flex items-baseline">
-                            <span
-                                class="font-mono text-sm font-medium text-gray-900"
-                            >
-                                {{ command.name }}
-                            </span>
-                            <span class="text-xs text-gray-500 ml-2">
-                                {{ command.description }}
-                            </span>
+                            <span class="font-mono text-sm font-medium text-white/85">{{ command.name }}</span>
+                            <span class="ml-2 text-xs text-white/40">{{ command.description }}</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- 无匹配结果 -->
-                <div
-                    v-if="!hasCommands"
-                    class="flex flex-col items-center justify-center py-8 text-gray-500"
-                >
-                    <div class="text-3xl mb-2">
-                        {{ searchQuery ? "🔍" : "💬" }}
-                    </div>
-                    <p class="text-sm font-medium">
-                        {{ searchQuery ? "未找到匹配的命令" : "暂无可用命令" }}
-                    </p>
-                    <p class="text-xs text-gray-400 mt-1">
-                        {{
-                            searchQuery
-                                ? "尝试其他关键词"
-                                : "当前没有可执行的命令"
-                        }}
-                    </p>
+                <div v-if="!hasCommands" class="flex flex-col items-center justify-center py-8 text-white/40">
+                    <div class="mb-2 text-3xl">{{ searchQuery ? "🔍" : "💬" }}</div>
+                    <p class="text-sm font-medium">{{ searchQuery ? "未找到匹配的命令" : "暂无可用命令" }}</p>
+                    <p class="mt-1 text-xs text-white/25">{{ searchQuery ? "尝试其他关键词" : "当前没有可执行的命令" }}</p>
                 </div>
             </div>
         </div>

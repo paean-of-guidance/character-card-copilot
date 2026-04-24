@@ -7,11 +7,11 @@
         @click="handleBackdropClick"
       >
         <!-- 背景遮罩 -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+        <div class="absolute inset-0 bg-black/65 backdrop-blur-md"></div>
 
         <!-- Modal内容 -->
         <div
-          class="relative bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-hidden"
+          class="liquid-modal relative mx-4 w-full max-w-md max-h-[90vh] overflow-hidden"
           @click.stop
         >
           <!-- 图标和标题区域 -->
@@ -19,7 +19,7 @@
             <!-- 图标 -->
             <div
               :class="[
-                'flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center',
+                'flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center',
                 getIconClass()
               ]"
             >
@@ -32,29 +32,26 @@
 
             <!-- 标题和内容 -->
             <div class="flex-1">
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">
+              <h3 class="mb-2 text-lg font-semibold text-white/90">
                 {{ currentOptions.title }}
               </h3>
-              <p class="text-gray-600 text-sm leading-relaxed">
+              <p class="text-sm leading-relaxed text-white/60">
                 {{ currentOptions.message }}
               </p>
             </div>
           </div>
 
           <!-- 按钮区域 -->
-          <div class="flex gap-3 justify-end p-6 pt-4">
+          <div class="flex justify-end gap-3 p-6 pt-4">
             <button
               @click="handleCancel"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              class="glass-btn glass-btn--neutral"
             >
               {{ currentOptions.cancelText }}
             </button>
             <button
               @click="handleConfirm"
-              :class="[
-                'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                getConfirmButtonClass()
-              ]"
+              :class="['glass-btn', getConfirmButtonClass()]"
             >
               {{ currentOptions.confirmText }}
             </button>
@@ -82,10 +79,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
-// Modal显示状态
 const visible = ref(false)
 
-// 当前配置
 const currentOptions = ref<ModalOptions>({
   title: '',
   message: '',
@@ -94,43 +89,36 @@ const currentOptions = ref<ModalOptions>({
   type: 'info'
 })
 
-// 监听props变化
 watch(() => props.options, (newOptions) => {
   if (newOptions) {
     const config = getModalConfig(newOptions.type)
-    currentOptions.value = {
-      ...config,
-      ...newOptions
-    }
+    currentOptions.value = { ...config, ...newOptions }
     visible.value = true
   } else {
     visible.value = false
   }
 }, { immediate: true })
 
-// 获取图标样式
 function getIconClass(): string {
   const type = currentOptions.value.type
   const classes = {
-    danger: 'bg-red-100 text-red-600',
-    warning: 'bg-yellow-100 text-yellow-600',
-    info: 'bg-blue-100 text-blue-600'
+    danger: 'bg-red-500/20 text-red-300',
+    warning: 'bg-yellow-500/20 text-yellow-300',
+    info: 'bg-indigo-500/20 text-indigo-300'
   }
   return classes[type || 'info']
 }
 
-// 获取确认按钮样式
 function getConfirmButtonClass(): string {
   const type = currentOptions.value.type
   const classes = {
-    danger: 'bg-red-500 hover:bg-red-600 text-white',
-    warning: 'bg-yellow-500 hover:bg-yellow-600 text-white',
-    info: 'bg-blue-500 hover:bg-blue-600 text-white'
+    danger: 'glass-btn--danger',
+    warning: 'glass-btn--primary',
+    info: 'glass-btn--primary'
   }
   return classes[type || 'info']
 }
 
-// 处理确认按钮点击
 async function handleConfirm() {
   try {
     await currentOptions.value.onConfirm?.()
@@ -141,7 +129,6 @@ async function handleConfirm() {
   closeModal()
 }
 
-// 处理取消按钮点击
 async function handleCancel() {
   try {
     await currentOptions.value.onCancel?.()
@@ -152,64 +139,47 @@ async function handleCancel() {
   closeModal()
 }
 
-// 处理背景点击（通常是关闭Modal）
 function handleBackdropClick(event: MouseEvent) {
-  // 只有点击背景遮罩时才关闭，点击内容区域不关闭
   if (event.target === event.currentTarget) {
     handleCancel()
   }
 }
 
-// 关闭Modal
 function closeModal() {
   visible.value = false
   emit('close')
 }
 
-// ESC键关闭Modal
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && visible.value) {
     handleCancel()
   }
 }
 
-// 监听键盘事件
 watch(visible, (newValue) => {
   if (newValue) {
     document.addEventListener('keydown', handleKeydown)
-    // 禁止背景滚动
     document.body.style.overflow = 'hidden'
   } else {
     document.removeEventListener('keydown', handleKeydown)
-    // 恢复背景滚动
     document.body.style.overflow = ''
   }
 })
 </script>
 
 <style scoped>
-/* Modal进入和离开动画 */
 .modal-enter-active {
-  transition: all 0.3s ease-out;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-
 .modal-leave-active {
-  transition: all 0.3s ease-in;
+  transition: all 0.2s ease-in;
 }
-
 .modal-enter-from {
   opacity: 0;
-  transform: scale(0.9);
+  transform: scale(0.88) translateY(12px);
 }
-
 .modal-leave-to {
   opacity: 0;
-  transform: scale(0.9);
-}
-
-/* 背景遮罩动画 */
-.modal-enter-from .absolute,
-.modal-leave-to .absolute {
-  opacity: 0;
+  transform: scale(0.92) translateY(8px);
 }
 </style>

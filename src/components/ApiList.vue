@@ -47,20 +47,17 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-2.5">
-    <div v-if="loading" class="flex-1 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+    <div v-if="loading" class="flex-1 rounded-xl border border-dashed border-white/12 bg-white/4 px-3 py-6 text-center text-sm text-white/40">
       正在加载 API 配置...
     </div>
 
     <template v-else>
-      <div class="thin-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
-        <div
-          v-if="filteredApis.length === 0"
-          class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center"
-        >
-          <p class="text-sm font-medium text-gray-700">
+      <div class="min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div v-if="filteredApis.length === 0" class="rounded-xl border border-dashed border-white/12 bg-white/4 px-3 py-6 text-center">
+          <p class="text-sm font-medium text-white/60">
             {{ apis.length === 0 ? '还没有 API 配置' : '没有匹配的配置' }}
           </p>
-          <p class="mt-1 text-xs text-gray-500">
+          <p class="mt-1 text-xs text-white/35">
             {{ apis.length === 0 ? '先创建一个配置，再测试和启用。' : '试试更换搜索关键词。' }}
           </p>
         </div>
@@ -78,9 +75,9 @@ onMounted(async () => {
         </div>
       </div>
 
-        <button
+      <button
         type="button"
-        class="shrink-0 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-3 py-3 text-sm font-medium text-blue-700 transition-colors hover:border-blue-400 hover:bg-blue-100"
+        class="glass-btn glass-btn--primary w-full justify-center py-3"
         @click="emit('create')"
       >
         <MdAdd class="h-4 w-4" />
@@ -90,26 +87,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.thin-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
-}
-
-.thin-scrollbar::-webkit-scrollbar {
-  width: 5px;
-}
-
-.thin-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.thin-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  background-color: #cbd5e1;
-}
-
-.thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
-}
-</style>
+<style scoped></style>

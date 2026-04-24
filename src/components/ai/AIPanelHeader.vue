@@ -6,13 +6,13 @@ const emit = defineEmits<{
 
 <template>
     <div class="flex items-center justify-between gap-3 px-1 pt-1">
-        <div class="inline-flex items-center gap-2 rounded-full border border-blue-200/80 bg-[linear-gradient(180deg,_rgba(219,234,254,0.92)_0%,_rgba(191,219,254,0.7)_100%)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-            <span class="inline-block h-2 w-2 rounded-full bg-blue-500"></span>
+        <div class="liquid-badge liquid-badge--primary inline-flex items-center gap-2 uppercase tracking-[0.18em]">
+            <span class="inline-block h-2 w-2 rounded-full bg-violet-400"></span>
             Workspace Copilot
         </div>
 
         <button
-            class="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/70 bg-white/58 text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.84)] backdrop-blur transition-colors hover:text-slate-600"
+            class="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/12 bg-white/8 text-white/40 backdrop-blur transition-colors hover:bg-white/14 hover:text-white/70"
             title="隐藏面板"
             @click="emit('toggle')"
         >

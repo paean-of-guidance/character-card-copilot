@@ -1,54 +1,49 @@
 <template>
     <div
-        class="max-w-[80%] min-w-0 px-4 py-2 rounded-lg group relative"
+        class="min-w-0 rounded-2xl px-4 py-2.5 group relative"
         :class="
             role === 'user'
-                ? 'bg-blue-500 text-white rounded-br-sm'
-                : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
+                ? 'rounded-br-sm max-w-[82%]'
+                : 'rounded-bl-sm max-w-[95%]'
+        "
+        :style="
+            role === 'user'
+                ? 'background: rgba(99,102,241,0.25); border: 1px solid rgba(165,180,252,0.25);'
+                : 'background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.10); backdrop-filter: blur(12px);'
         "
     >
         <!-- 消息内容 -->
         <template v-if="!isEditing">
+            <!-- 思考过程 -->
             <div
                 v-if="role === 'assistant' && (reasoningContent || reasoningLoading)"
-                class="mb-3 rounded-md border border-gray-200 bg-gray-50"
+                class="mb-3 rounded-xl border border-white/10 bg-white/5"
             >
                 <button
-                    class="w-full px-3 py-2 flex items-center justify-between text-left text-xs text-gray-600 hover:bg-gray-100 transition-colors"
+                    class="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-white/50 transition-colors hover:bg-white/5"
                     @click="$emit('toggleReasoning')"
                 >
                     <span>{{ reasoningExpanded ? '▼' : '▶' }} 思考过程</span>
-                    <span v-if="reasoningLoading" class="text-blue-500">思考中...</span>
+                    <span v-if="reasoningLoading" class="text-violet-400">思考中...</span>
                 </button>
-                <div
-                    v-if="reasoningExpanded"
-                    class="px-3 pb-3 text-xs text-gray-600 whitespace-pre-wrap"
-                >
+                <div v-if="reasoningExpanded" class="whitespace-pre-wrap px-3 pb-3 text-xs text-white/40">
                     {{ reasoningContent }}
                 </div>
             </div>
+
             <MarkdownRenderer
                 v-if="role === 'assistant' && content"
                 :content="content"
-                class="text-sm"
+                class="text-sm text-white/85"
             />
-            <div v-else class="text-sm whitespace-pre-wrap">
+            <div v-else class="whitespace-pre-wrap text-sm" :class="role === 'user' ? 'text-white/90' : 'text-white/85'">
                 {{ content }}
             </div>
-            <div
-                class="text-xs mt-1 opacity-70"
-                :class="
-                    role === 'user'
-                        ? 'text-blue-100'
-                        : 'text-gray-500'
-                "
-            >
+
+            <div class="mt-1 text-xs opacity-60" :class="role === 'user' ? 'text-indigo-200' : 'text-white/40'">
                 {{ formatTime(timestamp) }}
             </div>
-            <div
-                v-if="role === 'assistant' && loading"
-                class="mt-1 text-xs text-blue-500"
-            >
+            <div v-if="role === 'assistant' && loading" class="mt-1 text-xs text-violet-400">
                 生成中...
             </div>
         </template>
@@ -59,72 +54,51 @@
                 v-model="editingContent"
                 @keydown="handleEditKeydown"
                 @blur="handleSaveEdit"
-                class="w-full p-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="liquid-textarea w-full resize-none text-sm"
                 rows="3"
                 placeholder="编辑消息内容..."
             ></textarea>
-            <div class="flex gap-2 mt-2">
-                <button
-                    @click="handleSaveEdit"
-                    class="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 transition-colors"
-                >
-                    保存
-                </button>
-                <button
-                    @click="handleCancelEdit"
-                    class="text-xs bg-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-400 transition-colors"
-                >
-                    取消
-                </button>
+            <div class="mt-2 flex gap-2">
+                <button @click="handleSaveEdit" class="glass-btn glass-btn--primary text-xs">保存</button>
+                <button @click="handleCancelEdit" class="glass-btn glass-btn--neutral text-xs">取消</button>
             </div>
         </div>
 
         <!-- 消息操作按钮 -->
         <div
             v-if="!loading && !isEditing"
-            class="absolute -bottom-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1"
-            :class="
-                role === 'user'
-                    ? 'left-0'
-                    : 'right-0'
-            "
+            class="absolute -bottom-6 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+            :class="role === 'user' ? 'left-0' : 'right-0'"
         >
-            <!-- 用户消息：生成AI回复按钮（仅最后一条显示） -->
             <button
                 v-if="role === 'user' && isLastMessage"
                 @click="$emit('continue')"
-                class="p-1 bg-blue-100 hover:bg-blue-200 rounded-full transition-colors"
+                class="rounded-full bg-indigo-500/20 p-1 text-indigo-300 transition-colors hover:bg-indigo-500/35"
                 title="生成AI回复"
             >
-                <MdSend class="w-4 h-4 text-blue-600" />
+                <MdSend class="h-4 w-4" />
             </button>
-
-            <!-- AI消息：重新生成按钮 -->
             <button
                 v-if="role === 'assistant' && isLastMessage"
                 @click="$emit('regenerate')"
-                class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                class="rounded-full bg-white/10 p-1 text-white/50 transition-colors hover:bg-white/18 hover:text-white/75"
                 title="重新生成"
             >
-                <MdOutlineRefresh class="w-4 h-4 text-gray-600" />
+                <MdOutlineRefresh class="h-4 w-4" />
             </button>
-
-            <!-- 编辑按钮 -->
             <button
                 @click="handleStartEdit"
-                class="p-1 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                class="rounded-full bg-white/10 p-1 text-white/50 transition-colors hover:bg-white/18 hover:text-white/75"
                 title="编辑消息"
             >
-                <MdOutlineEdit class="w-4 h-4 text-gray-600" />
+                <MdOutlineEdit class="h-4 w-4" />
             </button>
-
-            <!-- 删除按钮 -->
             <button
                 @click="$emit('delete')"
-                class="p-1 bg-gray-100 hover:bg-red-100 rounded-full transition-colors"
+                class="rounded-full bg-white/10 p-1 text-white/50 transition-colors hover:bg-red-500/25 hover:text-red-300"
                 title="删除消息"
             >
-                <MdOutlineDelete class="w-4 h-4 text-gray-600 hover:text-red-600" />
+                <MdOutlineDelete class="h-4 w-4" />
             </button>
         </div>
     </div>
@@ -141,42 +115,25 @@ import {
 } from 'vue-icons-plus/md';
 
 interface Props {
-    /** 消息ID */
     messageId: string;
-    /** 消息角色 */
     role: 'user' | 'assistant';
-    /** 消息内容 */
     content: string;
-    /** 思考过程内容 */
     reasoningContent?: string;
-    /** 思考过程是否展开 */
     reasoningExpanded?: boolean;
-    /** 思考过程是否仍在流式中 */
     reasoningLoading?: boolean;
-    /** 时间戳 */
     timestamp: Date;
-    /** 是否正在编辑 */
     isEditing?: boolean;
-    /** 是否加载中 */
     loading?: boolean;
-    /** 是否最后一条消息 */
     isLastMessage?: boolean;
 }
 
 interface Emits {
-    /** 继续生成AI回复 */
     continue: [];
-    /** 重新生成 */
     regenerate: [];
-    /** 开始编辑 */
     startEdit: [];
-    /** 保存编辑 */
     saveEdit: [newContent: string];
-    /** 取消编辑 */
     cancelEdit: [];
-    /** 删除消息 */
     delete: [];
-    /** 切换思考过程展开状态 */
     toggleReasoning: [];
 }
 
@@ -191,52 +148,30 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>();
 
-// 编辑状态
 const editingContent = ref('');
 
-/**
- * 格式化时间
- */
 function formatTime(date: Date): string {
-    return date.toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-/**
- * 开始编辑
- */
 function handleStartEdit() {
     editingContent.value = props.content;
     emit('startEdit');
 }
 
-/**
- * 保存编辑
- */
 function handleSaveEdit() {
-    const newContent = editingContent.value.trim();
-    emit('saveEdit', newContent);
+    emit('saveEdit', editingContent.value.trim());
 }
 
-/**
- * 取消编辑
- */
 function handleCancelEdit() {
     emit('cancelEdit');
 }
 
-/**
- * 处理编辑框键盘事件
- */
 function handleEditKeydown(event: KeyboardEvent) {
-    // Ctrl/Cmd + Enter 保存
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
         handleSaveEdit();
     }
-    // Escape 取消
     if (event.key === 'Escape') {
         event.preventDefault();
         handleCancelEdit();

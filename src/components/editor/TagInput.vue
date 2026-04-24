@@ -46,42 +46,35 @@ function removeTag(index: number) {
             <span
                 v-for="(tag, index) in normalizedTags"
                 :key="tag + index"
-                class="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-3 py-1 text-sm"
+                class="inline-flex items-center gap-1 rounded-full border border-indigo-400/25 bg-indigo-500/18 px-3 py-1 text-sm text-indigo-300"
             >
                 <span>{{ tag }}</span>
                 <button
                     type="button"
-                    class="text-blue-600 hover:text-blue-800"
+                    class="text-indigo-400/60 hover:text-indigo-200"
                     :disabled="disabled"
                     @click="removeTag(index)"
                 >
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
+                    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </span>
-            <span v-if="!normalizedTags.length" class="text-xs text-gray-400">
-                尚未添加标签
-            </span>
+            <span v-if="!normalizedTags.length" class="text-xs text-white/30">尚未添加标签</span>
         </div>
 
         <div class="flex gap-2">
             <input
                 v-model="inputValue"
                 type="text"
-                class="flex-1 border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                class="liquid-input flex-1"
                 :placeholder="placeholder || '输入标签后按回车'"
                 :disabled="disabled"
                 @keydown.enter.prevent="addTag"
             />
             <button
                 type="button"
-                class="glass-btn glass-btn--primary disabled:opacity-40 disabled:cursor-not-allowed"
+                class="glass-btn glass-btn--primary disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="disabled"
                 @click="addTag"
             >

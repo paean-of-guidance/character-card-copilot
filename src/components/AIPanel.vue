@@ -883,7 +883,7 @@ onUnmounted(() => {
 <template>
     <div
         v-if="visible"
-        class="card flex w-[min(50%,42rem)] min-w-[24rem] max-w-[42rem] flex-shrink-0 rounded-[28px] border border-white/70 bg-white/78 p-4 shadow-[0_22px_55px_rgba(148,163,184,0.22)] backdrop-blur-xl lg:p-5"
+        class="card liquid-panel flex w-[min(50%,42rem)] min-w-[24rem] max-w-[42rem] flex-shrink-0 p-4 lg:p-5"
     >
         <div class="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
             <AIPanelHeader @toggle="togglePanel" />
@@ -891,7 +891,8 @@ onUnmounted(() => {
             <!-- 对话消息区域 -->
             <div
                 ref="chatMessagesRef"
-                class="flex-1 min-w-0 overflow-y-auto rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,_rgba(248,250,252,0.95)_0%,_rgba(241,245,249,0.92)_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
+                class="flex-1 min-w-0 overflow-y-auto rounded-[24px] border border-white/8 p-4"
+                style="background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);"
             >
                 <AIPanelEmptyState v-if="messages.length === 0" />
 
@@ -946,21 +947,11 @@ onUnmounted(() => {
 
                     <!-- 加载中指示器 -->
                     <div v-if="isLoading && !hasStreamingAssistant" class="flex justify-start">
-                        <div
-                            class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 shadow-sm"
-                        >
+                        <div class="rounded-2xl border border-white/12 bg-white/8 px-4 py-2 backdrop-blur-sm">
                             <div class="flex items-center gap-2">
-                                <div
-                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
-                                ></div>
-                                <div
-                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
-                                    style="animation-delay: 0.1s"
-                                ></div>
-                                <div
-                                    class="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
-                                    style="animation-delay: 0.2s"
-                                ></div>
+                                <div class="h-2 w-2 animate-bounce rounded-full bg-violet-400/70"></div>
+                                <div class="h-2 w-2 animate-bounce rounded-full bg-violet-400/70" style="animation-delay: 0.1s"></div>
+                                <div class="h-2 w-2 animate-bounce rounded-full bg-violet-400/70" style="animation-delay: 0.2s"></div>
                             </div>
                         </div>
                     </div>

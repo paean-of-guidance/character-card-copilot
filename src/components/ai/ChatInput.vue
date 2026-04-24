@@ -223,14 +223,14 @@ onMounted(() => {
 
 <style scoped>
 .composer-shell {
-    border: 1px solid rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 1.5rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74) 0%, rgba(255, 255, 255, 0.46) 100%);
+    background: rgba(255, 255, 255, 0.06);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.82),
-        0 18px 34px rgba(148, 163, 184, 0.12);
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 8px 24px rgba(0, 0, 0, 0.25);
     padding: 0.5rem;
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(24px);
 }
 
 .composer-input-wrap {
@@ -241,8 +241,7 @@ onMounted(() => {
     width: 100%;
     min-width: 0;
     border-radius: 1.125rem;
-    background: rgba(255, 255, 255, 0.72);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.04);
     padding: 0.3125rem;
 }
 
@@ -253,7 +252,7 @@ onMounted(() => {
     border: none;
     background: transparent;
     padding: 0.625rem 0.75rem;
-    color: #0f172a;
+    color: rgba(255, 255, 255, 0.90);
     font-size: 0.95rem;
     transition: height 0.18s ease;
     display: block;
@@ -261,11 +260,11 @@ onMounted(() => {
     line-height: 24px;
     min-height: 48px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.82) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .chat-input-textarea::placeholder {
-    color: #94a3b8;
+    color: rgba(255, 255, 255, 0.28);
 }
 
 .chat-input-textarea:focus {
@@ -274,7 +273,7 @@ onMounted(() => {
 
 .chat-input-textarea:disabled {
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
 .send-button {
@@ -284,14 +283,13 @@ onMounted(() => {
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(191, 219, 254, 0.95);
+    border: 1px solid rgba(165, 180, 252, 0.35);
     border-radius: 999px;
-    background: linear-gradient(180deg, rgba(239, 246, 255, 0.88) 0%, rgba(219, 234, 254, 0.72) 100%);
-    color: #5b7aa6;
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.35) 0%, rgba(139, 92, 246, 0.25) 100%);
+    color: rgba(196, 181, 253, 0.95);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 10px 24px rgba(96, 165, 250, 0.18),
-        0 0 0 1px rgba(255, 255, 255, 0.38);
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        0 8px 20px rgba(99, 102, 241, 0.25);
     backdrop-filter: blur(16px);
     align-self: end;
     transition:
@@ -304,41 +302,35 @@ onMounted(() => {
 
 .send-button:hover:not(:disabled) {
     transform: translateY(-1px);
-    color: #3b82f6;
-    background: linear-gradient(180deg, rgba(239, 246, 255, 0.94) 0%, rgba(191, 219, 254, 0.82) 100%);
+    color: rgba(255, 255, 255, 0.98);
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.55) 0%, rgba(139, 92, 246, 0.42) 100%);
+    border-color: rgba(165, 180, 252, 0.55);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.96),
-        0 14px 28px rgba(96, 165, 250, 0.24),
-        0 0 0 1px rgba(191, 219, 254, 0.42);
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 12px 28px rgba(99, 102, 241, 0.35);
 }
 
 .send-button--stop {
-    border-color: rgba(248, 113, 113, 0.9);
-    background: linear-gradient(180deg, rgba(254, 242, 242, 0.94) 0%, rgba(254, 202, 202, 0.84) 100%);
-    color: #dc2626;
+    border-color: rgba(252, 165, 165, 0.35);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.32) 0%, rgba(220, 38, 38, 0.22) 100%);
+    color: rgba(252, 165, 165, 0.95);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 12px 26px rgba(248, 113, 113, 0.2),
-        0 0 0 1px rgba(254, 202, 202, 0.4);
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 20px rgba(239, 68, 68, 0.20);
 }
 
 .send-button--stop:hover:not(:disabled) {
-    color: #b91c1c;
-    background: linear-gradient(180deg, rgba(254, 226, 226, 0.96) 0%, rgba(252, 165, 165, 0.84) 100%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.94),
-        0 14px 30px rgba(248, 113, 113, 0.24),
-        0 0 0 1px rgba(252, 165, 165, 0.42);
+    color: rgba(255, 255, 255, 0.98);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.50) 0%, rgba(220, 38, 38, 0.38) 100%);
+    border-color: rgba(252, 165, 165, 0.55);
 }
 
 .send-button:disabled {
     cursor: not-allowed;
-    border-color: rgba(226, 232, 240, 0.95);
-    background: linear-gradient(180deg, rgba(248, 250, 252, 0.86) 0%, rgba(241, 245, 249, 0.72) 100%);
-    color: #94a3b8;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.86),
-        0 8px 18px rgba(148, 163, 184, 0.08);
+    border-color: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.25);
+    box-shadow: none;
 }
 
 .chat-input-textarea::-webkit-scrollbar {
@@ -351,7 +343,7 @@ onMounted(() => {
 
 .chat-input-textarea::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: rgba(148, 163, 184, 0.78);
+    background: rgba(255, 255, 255, 0.15);
     border: 2px solid transparent;
     background-clip: padding-box;
 }

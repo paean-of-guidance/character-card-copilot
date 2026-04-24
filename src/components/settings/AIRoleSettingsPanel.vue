@@ -251,16 +251,16 @@ onMounted(() => {
 
 <template>
   <section class="grid h-[calc(100vh-220px)] min-h-[560px] grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-    <aside class="flex min-h-0 flex-col rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div class="flex items-center justify-between gap-3 border-b border-gray-100 pb-4">
+    <aside class="liquid-panel flex min-h-0 flex-col p-4">
+      <div class="flex items-center justify-between gap-3 border-b border-white/8 pb-4">
         <div>
-          <h2 class="text-lg font-semibold text-gray-900">AI 角色</h2>
-          <p class="mt-1 text-sm text-gray-500">管理聊天主 system prompt 与上下文模板。</p>
+          <h2 class="text-lg font-semibold text-white/90">AI 角色</h2>
+          <p class="mt-1 text-sm text-white/45">管理聊天主 system prompt 与上下文模板。</p>
         </div>
 
         <button
           type="button"
-          class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-gray-900 px-4 py-2.5 text-sm font-medium leading-none text-white transition hover:bg-black"
+          class="glass-btn glass-btn--primary inline-flex shrink-0 items-center whitespace-nowrap"
           @click="handleCreateRole"
         >
           新建角色
@@ -273,25 +273,25 @@ onMounted(() => {
           :key="roleEntry.id"
           type="button"
           class="w-full rounded-2xl border p-4 text-left transition"
-          :class="roleEntry.id === selectedRoleId ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'"
+          :class="roleEntry.id === selectedRoleId ? 'border-violet-400/35 bg-violet-500/15 shadow-[0_0_0_1px_rgba(167,139,250,0.15)]' : 'border-white/10 bg-white/5 hover:border-white/18 hover:bg-white/8'"
           @click="handleSelectRole(roleEntry.id)"
         >
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="text-sm font-semibold text-gray-900">{{ roleEntry.role.name }}</div>
-              <p class="mt-1 line-clamp-2 text-xs text-gray-500">{{ roleEntry.role.description || '暂无描述' }}</p>
+              <div class="text-sm font-semibold text-white/85">{{ roleEntry.role.name }}</div>
+              <p class="mt-1 line-clamp-2 text-xs text-white/40">{{ roleEntry.role.description || '暂无描述' }}</p>
             </div>
 
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <span
                 v-if="roleEntry.id === defaultRole"
-                class="inline-flex items-center whitespace-nowrap rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-medium leading-none text-blue-700"
+                class="liquid-badge liquid-badge--primary inline-flex items-center whitespace-nowrap"
               >
                 默认
               </span>
               <span
-                :class="roleEntry.role.tools_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'"
-                class="inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium leading-none"
+                :class="roleEntry.role.tools_enabled ? 'bg-emerald-500/15 text-emerald-400 border-emerald-400/25' : 'bg-white/8 text-white/40 border-white/12'"
+                class="liquid-badge inline-flex items-center whitespace-nowrap"
               >
                 {{ roleEntry.role.tools_enabled ? '工具开启' : '工具关闭' }}
               </span>
@@ -301,14 +301,14 @@ onMounted(() => {
       </div>
     </aside>
 
-    <div class="min-h-0 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div class="liquid-panel min-h-0 p-5">
       <div v-if="draftRole" class="flex h-full min-h-0 flex-col">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-4">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-white/8 pb-4">
           <div>
-            <h2 class="text-xl font-semibold text-gray-900">
+            <h2 class="text-xl font-semibold text-white/90">
               {{ isCreatingRole ? '创建 AI 角色' : draftRole.name || '编辑 AI 角色' }}
             </h2>
-            <p class="mt-1 text-sm text-gray-500">
+            <p class="mt-1 text-sm text-white/45">
               主系统提示词会作为第一层 system prompt；上下文模板会作为第二层结构化辅助上下文。
             </p>
           </div>
@@ -317,7 +317,7 @@ onMounted(() => {
             <button
               v-if="canSetDefaultRole"
               type="button"
-              class="rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+              class="glass-btn glass-btn--primary"
               @click="handleSetDefaultRole"
             >
               设为默认
@@ -325,7 +325,7 @@ onMounted(() => {
             <button
               v-if="canDeleteRole"
               type="button"
-              class="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
+              class="glass-btn glass-btn--danger"
               @click="handleDeleteRole"
             >
               删除角色
@@ -336,73 +336,73 @@ onMounted(() => {
         <div class="thin-scrollbar mt-5 flex-1 space-y-5 overflow-y-auto pr-1">
           <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
             <label class="block">
-              <span class="text-sm font-medium text-gray-700">显示名</span>
+              <span class="text-sm font-medium text-white/70">显示名</span>
               <input
                 :value="draftRole.name"
                 type="text"
-                class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                class="liquid-input mt-2 w-full px-4 py-3 text-sm"
                 @input="patchDraftField('name', ($event.target as HTMLInputElement).value)"
               />
             </label>
 
             <label class="block">
-              <span class="text-sm font-medium text-gray-700">内部 ID</span>
+              <span class="text-sm font-medium text-white/70">内部 ID</span>
               <input
                 :value="selectedRoleId || '保存后自动生成'"
                 type="text"
                 readonly
-                class="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 outline-none"
+                class="liquid-input mt-2 w-full px-4 py-3 text-sm opacity-50 cursor-default"
               />
             </label>
           </div>
 
           <label class="block">
-            <span class="text-sm font-medium text-gray-700">描述</span>
+            <span class="text-sm font-medium text-white/70">描述</span>
             <textarea
               :value="draftRole.description"
               rows="3"
-              class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              class="liquid-textarea mt-2 w-full px-4 py-3 text-sm"
               @input="patchDraftField('description', ($event.target as HTMLTextAreaElement).value)"
             />
           </label>
 
-          <div class="rounded-3xl border border-gray-100 bg-gray-50 p-4">
-            <h3 class="text-sm font-semibold text-gray-900">聊天行为参数</h3>
+          <div class="rounded-3xl border border-white/8 bg-white/5 p-4">
+            <h3 class="text-sm font-semibold text-white/80">聊天行为参数</h3>
             <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[160px_160px_minmax(0,1fr)]">
               <label class="block">
-                <span class="text-sm font-medium text-gray-700">Temperature</span>
+                <span class="text-sm font-medium text-white/70">Temperature</span>
                 <input
                   :value="draftRole.temperature"
                   type="number"
                   min="0"
                   max="2"
                   step="0.1"
-                  class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  class="liquid-input mt-2 w-full px-4 py-3 text-sm"
                   @input="patchDraftField('temperature', Number(($event.target as HTMLInputElement).value) || 0)"
                 />
               </label>
 
               <label class="block">
-                <span class="text-sm font-medium text-gray-700">Max Tokens</span>
+                <span class="text-sm font-medium text-white/70">Max Tokens</span>
                 <input
                   :value="draftRole.max_tokens"
                   type="number"
                   min="1"
                   step="1"
-                  class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  class="liquid-input mt-2 w-full px-4 py-3 text-sm"
                   @input="patchDraftField('max_tokens', Number(($event.target as HTMLInputElement).value) || 1)"
                 />
               </label>
 
-              <label class="flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3">
+              <label class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <div>
-                  <span class="text-sm font-medium text-gray-700">工具自动调用</span>
-                  <p class="mt-1 text-xs text-gray-500">关闭后不会声明工具，也不会进入工具调用链。</p>
+                  <span class="text-sm font-medium text-white/75">工具自动调用</span>
+                  <p class="mt-1 text-xs text-white/40">关闭后不会声明工具，也不会进入工具调用链。</p>
                 </div>
                 <input
                   :checked="draftRole.tools_enabled"
                   type="checkbox"
-                  class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  class="h-4 w-4 rounded border-white/20 text-violet-500 focus:ring-violet-500/30"
                   @change="patchDraftField('tools_enabled', ($event.target as HTMLInputElement).checked)"
                 />
               </label>
@@ -410,57 +410,57 @@ onMounted(() => {
           </div>
 
           <label class="block">
-            <span class="text-sm font-medium text-gray-700">主系统提示词</span>
+            <span class="text-sm font-medium text-white/70">主系统提示词</span>
             <textarea
               :value="draftRole.system_prompt"
               rows="7"
-              class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              class="liquid-textarea mt-2 w-full px-4 py-3 text-sm"
               @input="patchDraftField('system_prompt', ($event.target as HTMLTextAreaElement).value)"
             />
           </label>
 
           <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <label class="block">
-              <span class="text-sm font-medium text-gray-700">上下文角色模板</span>
+              <span class="text-sm font-medium text-white/70">上下文角色模板</span>
               <textarea
                 :value="draftRole.context_role_template"
                 rows="8"
-                class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                class="liquid-textarea mt-2 w-full px-4 py-3 text-sm"
                 @input="patchDraftField('context_role_template', ($event.target as HTMLTextAreaElement).value)"
               />
             </label>
 
             <label class="block">
-              <span class="text-sm font-medium text-gray-700">上下文任务模板</span>
+              <span class="text-sm font-medium text-white/70">上下文任务模板</span>
               <textarea
                 :value="draftRole.context_task_template"
                 rows="8"
-                class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                class="liquid-textarea mt-2 w-full px-4 py-3 text-sm"
                 @input="patchDraftField('context_task_template', ($event.target as HTMLTextAreaElement).value)"
               />
             </label>
 
             <label class="block">
-              <span class="text-sm font-medium text-gray-700">上下文指令模板</span>
+              <span class="text-sm font-medium text-white/70">上下文指令模板</span>
               <textarea
                 :value="draftRole.context_instructions_template"
                 rows="8"
-                class="mt-2 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                class="liquid-textarea mt-2 w-full px-4 py-3 text-sm"
                 @input="patchDraftField('context_instructions_template', ($event.target as HTMLTextAreaElement).value)"
               />
             </label>
           </div>
         </div>
 
-        <div class="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p class="text-sm text-gray-500">
+        <div class="mt-5 flex flex-col gap-3 border-t border-white/8 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-sm text-white/45">
             {{ roleDirty || isCreatingRole ? '当前角色有未保存修改，保存后会立即同步到聊天面板。' : '当前角色配置已保存。' }}
           </p>
 
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              class="glass-btn glass-btn--neutral disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="(!roleDirty && !isCreatingRole) || savingRole"
               @click="handleDiscardChanges"
             >
@@ -468,7 +468,7 @@ onMounted(() => {
             </button>
             <button
               type="button"
-              class="rounded-full bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              class="glass-btn glass-btn--primary disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="!canSaveRole || savingRole"
               @click="handleSaveRole"
             >
@@ -478,14 +478,14 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-else class="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
-        <h2 class="text-xl font-semibold text-gray-900">选择一个 AI 角色</h2>
-        <p class="mt-2 max-w-md text-sm text-gray-500">
+      <div v-else class="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-6 text-center">
+        <h2 class="text-xl font-semibold text-white/85">选择一个 AI 角色</h2>
+        <p class="mt-2 max-w-md text-sm text-white/45">
           从左侧选择已有角色开始编辑，或者新建一个角色来管理主 system prompt 与上下文模板。
         </p>
         <button
           type="button"
-          class="mt-6 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+          class="glass-btn glass-btn--primary mt-6"
           @click="handleCreateRole"
         >
           创建第一个角色
@@ -498,7 +498,7 @@ onMounted(() => {
 <style scoped>
 .thin-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .thin-scrollbar::-webkit-scrollbar {
@@ -511,10 +511,10 @@ onMounted(() => {
 
 .thin-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background-color: #cbd5e1;
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 .thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: rgba(255, 255, 255, 0.25);
 }
 </style>

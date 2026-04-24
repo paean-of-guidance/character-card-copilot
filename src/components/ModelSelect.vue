@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
       <input
         v-model="selectedModel"
         type="text"
-        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100"
+        class="liquid-input w-full px-4 py-3 pr-12 text-sm"
         placeholder="选择或输入模型名称"
         @input="handleInput"
         @focus="openDropdown"
@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
 
       <button
         type="button"
-        class="absolute right-3 rounded-full p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        class="absolute right-3 rounded-full p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="loading || !apiConfig.base_url || !apiConfig.api_key"
         title="刷新模型列表"
         @click="loadModels"
@@ -145,15 +145,15 @@ onBeforeUnmount(() => {
 
     <div
       v-if="isOpen"
-      class="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl"
+      class="liquid-panel absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden"
     >
-      <div v-if="loading" class="px-4 py-3 text-sm text-gray-500">
+      <div v-if="loading" class="px-4 py-3 text-sm text-white/50">
         正在获取模型列表...
       </div>
-      <div v-else-if="error" class="px-4 py-3 text-sm text-red-600">
+      <div v-else-if="error" class="px-4 py-3 text-sm text-red-300">
         {{ error }}
       </div>
-      <div v-else-if="displayModels.length === 0" class="px-4 py-3 text-sm text-gray-500">
+      <div v-else-if="displayModels.length === 0" class="px-4 py-3 text-sm text-white/50">
         {{ searchQuery.trim() ? '没有匹配的模型' : '暂无可用模型' }}
       </div>
       <div v-else class="max-h-64 overflow-y-auto py-2">
@@ -161,12 +161,12 @@ onBeforeUnmount(() => {
           v-for="model in displayModels"
           :key="model.id"
           type="button"
-          class="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-gray-50"
-          :class="selectedModel === model.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'"
+          class="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-white/8"
+          :class="selectedModel === model.id ? 'bg-violet-500/15 text-violet-300' : 'text-white/75'"
           @click="selectModel(model)"
         >
           <span class="truncate font-medium">{{ model.id }}</span>
-          <span v-if="model.owned_by" class="truncate text-xs text-gray-400">{{ model.owned_by }}</span>
+          <span v-if="model.owned_by" class="truncate text-xs text-white/35">{{ model.owned_by }}</span>
         </button>
       </div>
     </div>

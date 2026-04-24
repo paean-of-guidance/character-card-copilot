@@ -72,7 +72,7 @@ function handleApiChange(event: Event) {
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #64748b;
+    color: rgba(255, 255, 255, 0.40);
 }
 
 .chip-value {
@@ -83,7 +83,7 @@ function handleApiChange(event: Event) {
     white-space: nowrap;
     font-size: 12px;
     font-weight: 600;
-    color: #0f172a;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .chip-native-select {

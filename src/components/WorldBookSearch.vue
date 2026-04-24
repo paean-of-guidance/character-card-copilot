@@ -1,18 +1,18 @@
 <template>
     <div class="space-y-3">
         <!-- 搜索框和操作按钮 -->
-        <div class="flex gap-2 rounded-2xl border border-white/60 bg-white/70 p-3 shadow-[0_4px_12px_rgba(148,163,184,0.08)] backdrop-blur">
+        <div class="flex gap-2 rounded-2xl border border-white/10 bg-white/6 p-3 backdrop-blur-xl">
             <!-- 搜索输入框 -->
             <div class="flex-1 relative">
                 <input
                     v-model="searchText"
                     type="text"
-                    class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-4 py-2.5 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                    class="liquid-input w-full px-4 py-2.5 pl-10 text-sm"
                     placeholder="搜索条目（名称、关键词、内容、备注）"
                     @input="handleSearch"
                 />
                 <svg
-                    class="w-4 h-4 text-slate-300 absolute left-3.5 top-1/2 transform -translate-y-1/2"
+                    class="w-4 h-4 text-white/25 absolute left-3.5 top-1/2 transform -translate-y-1/2"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -29,7 +29,7 @@
             <!-- 筛选按钮 -->
             <div class="relative flex">
                 <button
-                    class="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+                    class="liquid-input px-3 py-2 text-sm flex items-center gap-1.5 hover:bg-white/10 cursor-pointer"
                     @click="showFilters = !showFilters"
                 >
                     <svg
@@ -51,10 +51,10 @@
                 <!-- 筛选下拉菜单 -->
                 <div
                     v-if="showFilters"
-                    class="absolute right-0 top-full mt-2 w-64 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_12px_32px_rgba(148,163,184,0.20)] backdrop-blur-xl space-y-3 z-10"
+                    class="liquid-panel absolute right-0 top-full mt-2 w-64 p-4 space-y-3 z-10"
                 >
                     <div>
-                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">显示状态</label>
+                        <label class="text-xs font-semibold uppercase tracking-wider text-white/35 mb-2 block">显示状态</label>
                         <div class="space-y-2">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input
@@ -62,7 +62,7 @@
                                     type="checkbox"
                                     class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
                                 />
-                                <span class="text-sm text-slate-600">显示启用的条目</span>
+                                <span class="text-sm text-white/65">显示启用的条目</span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input
@@ -70,16 +70,16 @@
                                     type="checkbox"
                                     class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
                                 />
-                                <span class="text-sm text-slate-600">显示禁用的条目</span>
+                                <span class="text-sm text-white/65">显示禁用的条目</span>
                             </label>
                         </div>
                     </div>
 
-                    <div class="border-t border-slate-100 pt-3">
-                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">排序方式</label>
+                    <div class="border-t border-white/8 pt-3">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-white/35 mb-2 block">排序方式</label>
                         <select
                             v-model="sortBy"
-                            class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                            class="liquid-input w-full px-3 py-2 text-sm"
                             @change="handleSortChange"
                         >
                             <option value="insertion_order">插入顺序</option>
@@ -89,10 +89,10 @@
                     </div>
 
                     <div>
-                        <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 block">排序方向</label>
+                        <label class="text-xs font-semibold uppercase tracking-wider text-white/35 mb-2 block">排序方向</label>
                         <select
                             v-model="sortOrder"
-                            class="w-full rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                            class="liquid-input w-full px-3 py-2 text-sm"
                             @change="handleSortChange"
                         >
                             <option value="asc">升序</option>
@@ -100,9 +100,9 @@
                         </select>
                     </div>
 
-                    <div class="border-t border-slate-100 pt-3">
+                    <div class="border-t border-white/8 pt-3">
                         <button
-                            class="w-full rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2 px-3 text-sm transition-colors"
+                            class="w-full rounded-xl bg-white/8 hover:bg-white/12 text-white/60 font-medium py-2 px-3 text-sm transition-colors"
                             @click="resetFilters"
                         >
                             重置筛选
