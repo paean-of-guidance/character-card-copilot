@@ -125,7 +125,10 @@ pub struct ImagePaths {
 pub struct CharacterStorage;
 
 impl CharacterStorage {
-    fn sync_session_character_data(app_handle: &tauri::AppHandle, uuid: &str) -> Result<(), String> {
+    fn sync_session_character_data(
+        app_handle: &tauri::AppHandle,
+        uuid: &str,
+    ) -> Result<(), String> {
         let Some(mut session) = SESSION_MANAGER.get_session(uuid) else {
             return Ok(());
         };

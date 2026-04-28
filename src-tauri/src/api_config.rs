@@ -279,7 +279,9 @@ fn build_new_config(
         api_key: normalize_optional_text(request.api_key),
         model: normalize_optional_text(request.model),
         max_tokens: request.max_tokens.unwrap_or_else(default_api_max_tokens),
-        context_window: request.context_window.unwrap_or_else(default_context_window),
+        context_window: request
+            .context_window
+            .unwrap_or_else(default_context_window),
         default,
         enabled,
     })
@@ -645,11 +647,21 @@ impl ApiConfigService {
                                     });
                                 let max_tokens = extract_model_limit(
                                     model,
-                                    &["max_output_tokens", "max_completion_tokens", "max_tokens", "output_token_limit"],
+                                    &[
+                                        "max_output_tokens",
+                                        "max_completion_tokens",
+                                        "max_tokens",
+                                        "output_token_limit",
+                                    ],
                                 );
                                 let context_window = extract_model_limit(
                                     model,
-                                    &["context_window", "contextWindow", "input_token_limit", "inputTokenLimit"],
+                                    &[
+                                        "context_window",
+                                        "contextWindow",
+                                        "input_token_limit",
+                                        "inputTokenLimit",
+                                    ],
                                 );
 
                                 Some(ModelInfo {
@@ -686,11 +698,21 @@ impl ApiConfigService {
                                 owned_by: Some("google".to_string()),
                                 max_tokens: extract_model_limit(
                                     model,
-                                    &["outputTokenLimit", "output_token_limit", "maxOutputTokens", "max_output_tokens"],
+                                    &[
+                                        "outputTokenLimit",
+                                        "output_token_limit",
+                                        "maxOutputTokens",
+                                        "max_output_tokens",
+                                    ],
                                 ),
                                 context_window: extract_model_limit(
                                     model,
-                                    &["inputTokenLimit", "input_token_limit", "contextWindow", "context_window"],
+                                    &[
+                                        "inputTokenLimit",
+                                        "input_token_limit",
+                                        "contextWindow",
+                                        "context_window",
+                                    ],
                                 ),
                             })
                         })

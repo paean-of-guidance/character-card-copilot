@@ -105,17 +105,17 @@ impl ToolRegistry {
 
 // 全局工具注册中心实例
 lazy_static::lazy_static! {
-    pub static ref TOOL_REGISTRY: std::sync::RwLock<ToolRegistry> = {
-              let mut registry = ToolRegistry::new();
-              // 注册所有工具
-              registry.register_tool(super::character_editor::EditCharacterTool);
-              registry.register_tool(super::character_field_patcher::PatchCharacterFieldTool);
-              registry.register_tool(super::read_character_field::ReadCharacterFieldTool);
-              registry.register_tool(super::world_book_creator::CreateWorldBookEntryTool);
-              registry.register_tool(super::world_book_lister::ListWorldBookEntriesTool);
-              registry.register_tool(super::world_book_reader::ReadWorldBookEntryTool);
-              registry.register_tool(super::world_book_deleter::DeleteWorldBookEntryTool);
-              registry.register_tool(super::world_book_updater::UpdateWorldBookEntryTool);
-              std::sync::RwLock::new(registry)
-          };
-      }
+pub static ref TOOL_REGISTRY: std::sync::RwLock<ToolRegistry> = {
+          let mut registry = ToolRegistry::new();
+          // 注册所有工具
+          registry.register_tool(super::character_editor::EditCharacterTool);
+          registry.register_tool(super::character_field_patcher::PatchCharacterFieldTool);
+          registry.register_tool(super::read_character_field::ReadCharacterFieldTool);
+          registry.register_tool(super::world_book_creator::CreateWorldBookEntryTool);
+          registry.register_tool(super::world_book_lister::ListWorldBookEntriesTool);
+          registry.register_tool(super::world_book_reader::ReadWorldBookEntryTool);
+          registry.register_tool(super::world_book_deleter::DeleteWorldBookEntryTool);
+          registry.register_tool(super::world_book_updater::UpdateWorldBookEntryTool);
+          std::sync::RwLock::new(registry)
+      };
+  }

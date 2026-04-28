@@ -42,25 +42,26 @@ impl AIToolTrait for DeleteWorldBookEntryTool {
             }
         };
 
-        let mut character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some("角色不存在".to_string()),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
-            Err(error) => {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some(format!("获取角色数据失败: {}", error)),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
-        };
+        let mut character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    return ToolResult {
+                        success: false,
+                        data: None,
+                        error: Some("角色不存在".to_string()),
+                        execution_time_ms: start_time.elapsed().as_millis() as u64,
+                    };
+                }
+                Err(error) => {
+                    return ToolResult {
+                        success: false,
+                        data: None,
+                        error: Some(format!("获取角色数据失败: {}", error)),
+                        execution_time_ms: start_time.elapsed().as_millis() as u64,
+                    };
+                }
+            };
 
         let world_book = match character_data.card.data.character_book.as_mut() {
             Some(world_book) => world_book,
@@ -94,7 +95,8 @@ impl AIToolTrait for DeleteWorldBookEntryTool {
         let removed_entry_name = removed_entry.name.clone();
         let removed_entry_keys = removed_entry.keys.clone();
 
-        match CharacterStorage::update_character(app_handle, &character_uuid, &character_data.card) {
+        match CharacterStorage::update_character(app_handle, &character_uuid, &character_data.card)
+        {
             Ok(()) => {
                 if let Err(error) = app_handle.emit(
                     "world-book-entry-deleted",
@@ -108,20 +110,20 @@ impl AIToolTrait for DeleteWorldBookEntryTool {
                     eprintln!("发送世界书条目删除事件失败: {}", error);
                 }
 
-                        ToolResult {
-                            success: true,
-                            data: Some(json!({
-                                "message": "世界书条目删除成功",
-                                "matched_by": selection.matched_by,
-                                "matched_value": selection.matched_value,
-                                "deleted_entry": {
-                                    "summary": summarize_entry(&removed_entry),
-                                    "id": removed_entry_id,
-                                    "name": removed_entry.name,
-                                    "keys": removed_entry.keys,
-                                    "comment": removed_entry.comment,
-                                }
-                            })),
+                ToolResult {
+                    success: true,
+                    data: Some(json!({
+                        "message": "世界书条目删除成功",
+                        "matched_by": selection.matched_by,
+                        "matched_value": selection.matched_value,
+                        "deleted_entry": {
+                            "summary": summarize_entry(&removed_entry),
+                            "id": removed_entry_id,
+                            "name": removed_entry.name,
+                            "keys": removed_entry.keys,
+                            "comment": removed_entry.comment,
+                        }
+                    })),
                     error: None,
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 }

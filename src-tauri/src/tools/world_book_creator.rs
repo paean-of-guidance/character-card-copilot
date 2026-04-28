@@ -276,7 +276,7 @@ impl AIToolTrait for CreateWorldBookEntryTool {
                     eprintln!("发送世界书条目创建事件失败: {}", e);
                 }
 
-                    let content_preview = build_content_preview(&new_entry.content);
+                let content_preview = build_content_preview(&new_entry.content);
 
                 ToolResult {
                     success: true,

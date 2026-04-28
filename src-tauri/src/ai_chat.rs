@@ -1,5 +1,5 @@
-use crate::ai_tools::{ToolCallRequest, ToolDefinition};
 use crate::ai_cancellation::ActiveCancellationRequest;
+use crate::ai_tools::{ToolCallRequest, ToolDefinition};
 use crate::api_config::{ApiConfig, ApiProvider};
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::{ReasoningDeltaKind, ToolExecutionPhase};
@@ -531,8 +531,14 @@ impl AIChatService {
         let mut text_body = None;
         if let Some(field) = Self::get_string(data, "field") {
             label = field.clone();
-            let start = data.get("start").and_then(|value| value.as_u64()).unwrap_or(0);
-            let end = data.get("end").and_then(|value| value.as_u64()).unwrap_or(0);
+            let start = data
+                .get("start")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(0);
+            let end = data
+                .get("end")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(0);
             let total = data
                 .get("total_length")
                 .and_then(|value| value.as_u64())
@@ -614,7 +620,9 @@ impl AIChatService {
         Self::format_change_result(
             "create_world_book_entry",
             meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(data.clone()))),
+            Some(Self::format_yaml_block(&serde_json::Value::Object(
+                data.clone(),
+            ))),
         )
     }
 
@@ -628,7 +636,10 @@ impl AIChatService {
             meta.push(format!("matched_by={matched_by}"));
         }
         if let Some(matched_value) = data.get("matched_value") {
-            meta.push(format!("matched_value={}", Self::value_to_inline(matched_value)));
+            meta.push(format!(
+                "matched_value={}",
+                Self::value_to_inline(matched_value)
+            ));
         }
         if let Some(updated_fields) = data
             .get("updated_fields")
@@ -640,7 +651,9 @@ impl AIChatService {
         Self::format_change_result(
             "update_world_book_entry",
             meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(data.clone()))),
+            Some(Self::format_yaml_block(&serde_json::Value::Object(
+                data.clone(),
+            ))),
         )
     }
 
@@ -654,19 +667,21 @@ impl AIChatService {
             meta.push(format!("matched_by={matched_by}"));
         }
         if let Some(matched_value) = data.get("matched_value") {
-            meta.push(format!("matched_value={}", Self::value_to_inline(matched_value)));
+            meta.push(format!(
+                "matched_value={}",
+                Self::value_to_inline(matched_value)
+            ));
         }
         Self::format_change_result(
             "delete_world_book_entry",
             meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(data.clone()))),
+            Some(Self::format_yaml_block(&serde_json::Value::Object(
+                data.clone(),
+            ))),
         )
     }
 
-    fn format_generic_tool_result(
-        tool_name: &str,
-        data: Option<&serde_json::Value>,
-    ) -> String {
+    fn format_generic_tool_result(tool_name: &str, data: Option<&serde_json::Value>) -> String {
         let mut lines = vec![format!("ok {tool_name}")];
         if let Some(data) = data {
             let rendered = Self::render_value_lines(data);
@@ -683,7 +698,10 @@ impl AIChatService {
         };
 
         let mut lines = Vec::new();
-        if let Some(supported_fields) = details.get("supported_fields").and_then(Self::value_as_string_list) {
+        if let Some(supported_fields) = details
+            .get("supported_fields")
+            .and_then(Self::value_as_string_list)
+        {
             lines.push(format!("supported_fields: {}", supported_fields.join(", ")));
         }
         if let Some(candidates) = details.get("candidates").and_then(|value| value.as_array()) {
@@ -697,13 +715,22 @@ impl AIChatService {
                 }
             }
         }
-        if let Some(fragments) = details.get("fragment_matches").and_then(|value| value.as_array()) {
+        if let Some(fragments) = details
+            .get("fragment_matches")
+            .and_then(|value| value.as_array())
+        {
             for (index, fragment) in fragments.iter().enumerate() {
                 if let Some(fragment) = Self::as_object(fragment) {
                     let line = Self::compose_context_line(
-                        Self::get_string(fragment, "context_before").as_deref().unwrap_or(""),
-                        Self::get_string(fragment, "fragment").as_deref().unwrap_or(""),
-                        Self::get_string(fragment, "context_after").as_deref().unwrap_or(""),
+                        Self::get_string(fragment, "context_before")
+                            .as_deref()
+                            .unwrap_or(""),
+                        Self::get_string(fragment, "fragment")
+                            .as_deref()
+                            .unwrap_or(""),
+                        Self::get_string(fragment, "context_after")
+                            .as_deref()
+                            .unwrap_or(""),
                     );
                     lines.push(format!("fragment {}: {}", index + 1, line));
                 }
@@ -739,7 +766,9 @@ impl AIChatService {
     fn render_value_lines(value: &serde_json::Value) -> Vec<String> {
         match value {
             serde_json::Value::Null => Vec::new(),
-            serde_json::Value::Bool(_) | serde_json::Value::Number(_) | serde_json::Value::String(_) => {
+            serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {
                 vec![Self::value_to_inline(value)]
             }
             serde_json::Value::Array(items) => items
@@ -808,9 +837,7 @@ impl AIChatService {
         })
     }
 
-    fn as_object(
-        value: &serde_json::Value,
-    ) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    fn as_object(value: &serde_json::Value) -> Option<&serde_json::Map<String, serde_json::Value>> {
         value.as_object()
     }
 
@@ -818,11 +845,7 @@ impl AIChatService {
         format!("```{language}\n{body}\n```")
     }
 
-    fn format_change_result(
-        tool_name: &str,
-        meta: Vec<String>,
-        body: Option<String>,
-    ) -> String {
+    fn format_change_result(tool_name: &str, meta: Vec<String>, body: Option<String>) -> String {
         let mut lines = vec![format!("ok {tool_name}")];
         if !meta.is_empty() {
             lines.push(meta.join(" | "));
@@ -1134,7 +1157,7 @@ impl AIChatService {
         let mut intermediate_messages: Vec<ChatMessage> = Vec::new();
         let character_uuid = Self::character_uuid_for_events();
 
-        for _ in 0..5 {
+        loop {
             if cancellation.is_cancelled() {
                 Self::maybe_emit_stream_abort(app_handle, &character_uuid, target_message_id);
                 return Err(AIChatError::Aborted(Self::build_aborted_generation(
@@ -1182,9 +1205,7 @@ impl AIChatService {
                             &character_uuid,
                             target_message_id,
                         );
-                        return Err(AIChatError::failed(format!(
-                            "AI 流式事件处理失败: {error}"
-                        )));
+                        return Err(AIChatError::failed(format!("AI 流式事件处理失败: {error}")));
                     }
                 };
 
@@ -1238,8 +1259,7 @@ impl AIChatService {
                         stream_end = Some(end);
                         break;
                     }
-                    GenAiChatStreamEvent::Start
-                    | GenAiChatStreamEvent::ToolCallChunk(_) => {}
+                    GenAiChatStreamEvent::Start | GenAiChatStreamEvent::ToolCallChunk(_) => {}
                 }
             }
 
@@ -1315,8 +1335,6 @@ impl AIChatService {
             )
             .await?;
         }
-
-        Err(AIChatError::failed("工具调用循环次数超过限制"))
     }
 
     pub async fn create_chat_completion(
@@ -1331,7 +1349,7 @@ impl AIChatService {
         let mut intermediate_messages: Vec<ChatMessage> = Vec::new();
         let character_uuid = app_handle.map(|_| Self::character_uuid_for_events());
 
-        for _ in 0..5 {
+        loop {
             let chat_request = Self::build_chat_request(&messages, request);
 
             let response = client
@@ -1374,8 +1392,6 @@ impl AIChatService {
                 AIChatError::Aborted(_) => AI_RESPONSE_INTERRUPTED_ERROR.to_string(),
             })?;
         }
-
-        Err("工具调用循环次数超过限制".to_string())
     }
 }
 

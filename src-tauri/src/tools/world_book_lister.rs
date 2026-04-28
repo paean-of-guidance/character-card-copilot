@@ -47,11 +47,14 @@ impl AIToolTrait for ListWorldBookEntriesTool {
             .unwrap_or(DEFAULT_LIMIT)
             .min(MAX_LIMIT);
 
-        let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => return error_result(start_time, "角色不存在"),
-            Err(error) => return error_result(start_time, &format!("获取角色数据失败: {}", error)),
-        };
+        let character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => return error_result(start_time, "角色不存在"),
+                Err(error) => {
+                    return error_result(start_time, &format!("获取角色数据失败: {}", error))
+                }
+            };
 
         let entries = character_data
             .card
@@ -94,7 +97,9 @@ impl AIToolTrait for ListWorldBookEntriesTool {
             "query".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("可选过滤词，会在 id、name、key、comment、content 中做包含匹配".to_string()),
+                description: Some(
+                    "可选过滤词，会在 id、name、key、comment、content 中做包含匹配".to_string(),
+                ),
                 enum_values: None,
                 items: None,
                 properties: None,

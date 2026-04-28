@@ -1,8 +1,8 @@
 use crate::ai_cancellation::AI_CANCELLATION_MANAGER;
+use crate::ai_config::{AIConfigService, AIRole};
 use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::sessions::config::ContextBuilderOptions;
 use crate::backend::domain::{SessionInfo, SessionUnloadReason, TokenUsageStats};
-use crate::ai_config::{AIConfigService, AIRole};
 use crate::character_session::{CharacterSession, SESSION_MANAGER};
 use crate::tools::ToolRegistry;
 use tauri::AppHandle;
@@ -442,9 +442,7 @@ impl SessionService {
                 msg.tool_calls.is_some(),
                 msg.tool_call_id
             );
-            if msg.content.is_empty()
-                && msg.tool_calls.is_none()
-                && msg.reasoning_content.is_none()
+            if msg.content.is_empty() && msg.tool_calls.is_none() && msg.reasoning_content.is_none()
             {
                 crate::debug_log!("⚠️ 警告: 消息[{}]内容为空且没有tool_calls", idx);
             }

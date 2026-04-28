@@ -183,7 +183,10 @@ impl AIConfigService {
     fn generate_role_id(config: &AIConfig, role_name: &str) -> String {
         let base = Self::sanitize_role_id(role_name);
         let base = if base.is_empty() {
-            format!("ai_role_{}", &uuid::Uuid::new_v4().simple().to_string()[..8])
+            format!(
+                "ai_role_{}",
+                &uuid::Uuid::new_v4().simple().to_string()[..8]
+            )
         } else {
             base
         };
@@ -238,7 +241,10 @@ impl AIConfigService {
     }
 
     /// 获取指定角色配置
-    pub fn get_role(app_handle: &tauri::AppHandle, role_id: &str) -> Result<Option<AIRole>, String> {
+    pub fn get_role(
+        app_handle: &tauri::AppHandle,
+        role_id: &str,
+    ) -> Result<Option<AIRole>, String> {
         let config = Self::load_config(app_handle)?;
         Ok(config.roles.get(role_id).cloned())
     }

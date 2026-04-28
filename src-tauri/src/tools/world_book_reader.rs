@@ -34,13 +34,14 @@ impl AIToolTrait for ReadWorldBookEntryTool {
             None => return error_result(start_time, "缺少角色UUID", None),
         };
 
-        let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => return error_result(start_time, "角色不存在", None),
-            Err(error) => {
-                return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
-            }
-        };
+        let character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => return error_result(start_time, "角色不存在", None),
+                Err(error) => {
+                    return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
+                }
+            };
 
         let world_book = match character_data.card.data.character_book.as_ref() {
             Some(book) => book,

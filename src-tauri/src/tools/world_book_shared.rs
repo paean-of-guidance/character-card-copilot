@@ -353,7 +353,10 @@ mod tests {
 
     #[test]
     fn locate_entry_by_id() {
-        let entries = vec![sample_entry(1, "Alpha", "alpha"), sample_entry(2, "Beta", "beta")];
+        let entries = vec![
+            sample_entry(1, "Alpha", "alpha"),
+            sample_entry(2, "Beta", "beta"),
+        ];
         let mut params = HashMap::new();
         params.insert("entry_id".to_string(), json!(2));
 
@@ -364,7 +367,10 @@ mod tests {
 
     #[test]
     fn locate_entry_reports_candidates() {
-        let entries = vec![sample_entry(1, "Alpha", "tag"), sample_entry(2, "Beta", "tag")];
+        let entries = vec![
+            sample_entry(1, "Alpha", "tag"),
+            sample_entry(2, "Beta", "tag"),
+        ];
         let mut params = HashMap::new();
         params.insert("key".to_string(), json!("tag"));
 

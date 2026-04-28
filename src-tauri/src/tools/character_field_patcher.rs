@@ -141,20 +141,26 @@ impl AIToolTrait for PatchCharacterFieldTool {
 
         let dry_run = get_bool_parameter(&request.parameters, "dry_run").unwrap_or(false);
 
-        let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                return failure_result(start_time, "character_not_found", "角色不存在".to_string(), None)
-            }
-            Err(error) => {
-                return failure_result(
-                    start_time,
-                    "load_character_failed",
-                    format!("获取角色数据失败: {}", error),
-                    None,
-                )
-            }
-        };
+        let character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    return failure_result(
+                        start_time,
+                        "character_not_found",
+                        "角色不存在".to_string(),
+                        None,
+                    )
+                }
+                Err(error) => {
+                    return failure_result(
+                        start_time,
+                        "load_character_failed",
+                        format!("获取角色数据失败: {}", error),
+                        None,
+                    )
+                }
+            };
 
         let mut tavern_card = character_data.card;
         let original_text = match get_field_value(&tavern_card, &field) {
@@ -172,7 +178,14 @@ impl AIToolTrait for PatchCharacterFieldTool {
             }
         };
 
-        let patch_output = match apply_patch(&field, &original_text, operation, match_mode, &search, &content) {
+        let patch_output = match apply_patch(
+            &field,
+            &original_text,
+            operation,
+            match_mode,
+            &search,
+            &content,
+        ) {
             Ok(output) => output,
             Err(failure) => {
                 return failure_result(start_time, failure.code, failure.message, failure.details)
@@ -197,31 +210,34 @@ impl AIToolTrait for PatchCharacterFieldTool {
             };
         }
 
-        if let Err(failure) = set_field_value(&mut tavern_card, &field, patch_output.updated_text.clone()) {
+        if let Err(failure) =
+            set_field_value(&mut tavern_card, &field, patch_output.updated_text.clone())
+        {
             return failure_result(start_time, failure.code, failure.message, failure.details);
         }
 
         match CharacterStorage::update_character(app_handle, &character_uuid, &tavern_card) {
             Ok(_) => {
-                let updated_character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-                    Ok(Some(data)) => data,
-                    Ok(None) => {
-                        return failure_result(
-                            start_time,
-                            "reload_character_failed",
-                            "角色已保存，但重新加载失败".to_string(),
-                            None,
-                        )
-                    }
-                    Err(error) => {
-                        return failure_result(
-                            start_time,
-                            "reload_character_failed",
-                            format!("角色已保存，但重新加载失败: {}", error),
-                            None,
-                        )
-                    }
-                };
+                let updated_character_data =
+                    match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                        Ok(Some(data)) => data,
+                        Ok(None) => {
+                            return failure_result(
+                                start_time,
+                                "reload_character_failed",
+                                "角色已保存，但重新加载失败".to_string(),
+                                None,
+                            )
+                        }
+                        Err(error) => {
+                            return failure_result(
+                                start_time,
+                                "reload_character_failed",
+                                format!("角色已保存，但重新加载失败: {}", error),
+                                None,
+                            )
+                        }
+                    };
 
                 if let Err(error) = EventBus::character_updated(
                     app_handle,
@@ -257,7 +273,10 @@ impl AIToolTrait for PatchCharacterFieldTool {
             "field".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("要修改的字段，仅支持长文本字段，如 description、personality、scenario 等".to_string()),
+                description: Some(
+                    "要修改的字段，仅支持长文本字段，如 description、personality、scenario 等"
+                        .to_string(),
+                ),
                 enum_values: Some(supported_field_names()),
                 items: None,
                 properties: None,
@@ -285,7 +304,9 @@ impl AIToolTrait for PatchCharacterFieldTool {
             "match_mode".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("匹配模式：exact 表示纯文本唯一匹配，regex 表示正则唯一匹配".to_string()),
+                description: Some(
+                    "匹配模式：exact 表示纯文本唯一匹配，regex 表示正则唯一匹配".to_string(),
+                ),
                 enum_values: Some(vec!["exact".to_string(), "regex".to_string()]),
                 items: None,
                 properties: None,
@@ -297,7 +318,9 @@ impl AIToolTrait for PatchCharacterFieldTool {
             "search".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("要搜索的目标文本或正则表达式。必须唯一命中，否则调用失败".to_string()),
+                description: Some(
+                    "要搜索的目标文本或正则表达式。必须唯一命中，否则调用失败".to_string(),
+                ),
                 enum_values: None,
                 items: None,
                 properties: None,
@@ -402,7 +425,10 @@ fn parse_match_mode(parameters: &HashMap<String, Value>) -> Result<MatchMode, To
     }
 }
 
-fn required_string(parameters: &HashMap<String, Value>, key: &'static str) -> Result<String, ToolFailure> {
+fn required_string(
+    parameters: &HashMap<String, Value>,
+    key: &'static str,
+) -> Result<String, ToolFailure> {
     match parameters.get(key) {
         Some(Value::String(value)) => Ok(value.clone()),
         Some(_) => Err(ToolFailure {
@@ -469,8 +495,9 @@ fn apply_patch(
 
     let (updated_text, updated_start, updated_end) = match operation {
         PatchOperation::Replace => {
-            let mut next =
-                String::with_capacity(original_text.len() - matched_span.matched_text.len() + content.len());
+            let mut next = String::with_capacity(
+                original_text.len() - matched_span.matched_text.len() + content.len(),
+            );
             next.push_str(&original_text[..matched_span.start]);
             next.push_str(content);
             next.push_str(&original_text[matched_span.end..]);
@@ -526,7 +553,9 @@ fn find_unique_match(
                 "search 匹配到 {} 处内容，结果不唯一，未执行修改",
                 multiple.len()
             ),
-            details: Some(build_multiple_match_details(field, text, match_mode, search, multiple)),
+            details: Some(build_multiple_match_details(
+                field, text, match_mode, search, multiple,
+            )),
         }),
     }
 }
@@ -763,7 +792,10 @@ mod tests {
         )
         .expect("patch should succeed");
 
-        assert_eq!(output.updated_text, "Height: 175cm\nBuild: athletic\nWeight: 60kg");
+        assert_eq!(
+            output.updated_text,
+            "Height: 175cm\nBuild: athletic\nWeight: 60kg"
+        );
     }
 
     #[test]
@@ -777,7 +809,13 @@ mod tests {
         .expect_err("patch should fail");
 
         assert_eq!(error.code, "no_match");
-        assert!(error.details.unwrap()["fragment_matches"].as_array().unwrap().len() >= 1);
+        assert!(
+            error.details.unwrap()["fragment_matches"]
+                .as_array()
+                .unwrap()
+                .len()
+                >= 1
+        );
     }
 
     #[test]
@@ -791,6 +829,12 @@ mod tests {
         .expect_err("patch should fail");
 
         assert_eq!(error.code, "multiple_matches");
-        assert_eq!(error.details.unwrap()["candidates"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            error.details.unwrap()["candidates"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }

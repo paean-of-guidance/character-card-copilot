@@ -54,7 +54,7 @@ impl Default for ContextBuilderOptions {
     fn default() -> Self {
         let mut placeholders = HashMap::new();
         placeholders.insert("{{ROLE}}".to_string(), "角色卡编写助手".to_string());
-              placeholders.insert(
+        placeholders.insert(
                   "{{TASK}}".to_string(),
                   "帮助用户创作和完善角色设定, 需要从多个角度(角色动机，角色心理，角色性格，角色背景)等分析，完成角色卡。当需要局部修改某个字段中的一句话、某个 trait 或某段内容时，优先先读后写：不确定当前文本时使用 read_character_field 或 patch_character_field(dry_run=true) 预览，确认唯一命中后再执行 patch_character_field；只有当用户明确要求重写整个字段时，才使用 edit_character。当处理世界书时，先使用 list_world_book_entries 查看候选，必要时用 read_world_book_entry 读取完整条目；创建使用 create_world_book_entry，更新使用 update_world_book_entry，删除使用 delete_world_book_entry，并尽量传 entry_id 以避免误操作。".to_string(),
               );

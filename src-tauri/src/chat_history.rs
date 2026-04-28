@@ -54,7 +54,8 @@ mod tests {
             "timestamp":1710000000
         }"#;
 
-        let message: ChatMessage = serde_json::from_str(line).expect("legacy history should deserialize");
+        let message: ChatMessage =
+            serde_json::from_str(line).expect("legacy history should deserialize");
 
         assert_eq!(message.role, "assistant");
         assert_eq!(message.content, "legacy reply");
@@ -62,7 +63,9 @@ mod tests {
         assert!(message.name.is_none());
         assert!(message.reasoning_content.is_none());
 
-        let tool_calls = message.tool_calls.expect("legacy tool calls should remain available");
+        let tool_calls = message
+            .tool_calls
+            .expect("legacy tool calls should remain available");
         assert_eq!(tool_calls.len(), 1);
         assert!(tool_calls[0].thought_signatures.is_none());
     }
@@ -87,8 +90,8 @@ mod tests {
             timestamp: Some(1710000001),
         };
 
-        let serialized =
-            serde_json::to_string(&message).expect("upgraded history should serialize successfully");
+        let serialized = serde_json::to_string(&message)
+            .expect("upgraded history should serialize successfully");
         let restored: ChatMessage =
             serde_json::from_str(&serialized).expect("upgraded history should deserialize");
 

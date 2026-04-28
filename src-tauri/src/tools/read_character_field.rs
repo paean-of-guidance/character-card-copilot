@@ -47,7 +47,11 @@ impl AIToolTrait for ReadCharacterFieldTool {
             None => return error_result(start_time, "缺少角色UUID"),
         };
 
-        let field = match request.parameters.get("field").and_then(|value| value.as_str()) {
+        let field = match request
+            .parameters
+            .get("field")
+            .and_then(|value| value.as_str())
+        {
             Some(value) if SUPPORTED_FIELDS.contains(&value) => value,
             Some(value) => {
                 return ToolResult {
@@ -68,11 +72,14 @@ impl AIToolTrait for ReadCharacterFieldTool {
             .unwrap_or(DEFAULT_MAX_CHARS)
             .min(MAX_MAX_CHARS);
 
-        let character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => return error_result(start_time, "角色不存在"),
-            Err(error) => return error_result(start_time, &format!("获取角色数据失败: {}", error)),
-        };
+        let character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => return error_result(start_time, "角色不存在"),
+                Err(error) => {
+                    return error_result(start_time, &format!("获取角色数据失败: {}", error))
+                }
+            };
 
         let text = match get_field_value(&character_data.card, field) {
             Some(value) => value,
@@ -107,7 +114,12 @@ impl AIToolTrait for ReadCharacterFieldTool {
             ChatToolParameter {
                 param_type: "string".to_string(),
                 description: Some("要读取的字段，仅支持长文本字段".to_string()),
-                enum_values: Some(SUPPORTED_FIELDS.iter().map(|field| (*field).to_string()).collect()),
+                enum_values: Some(
+                    SUPPORTED_FIELDS
+                        .iter()
+                        .map(|field| (*field).to_string())
+                        .collect(),
+                ),
                 items: None,
                 properties: None,
                 required: None,

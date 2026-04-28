@@ -37,13 +37,14 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
             None => return error_result(start_time, "缺少角色UUID", None),
         };
 
-        let mut character_data = match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-            Ok(Some(data)) => data,
-            Ok(None) => return error_result(start_time, "角色不存在", None),
-            Err(error) => {
-                return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
-            }
-        };
+        let mut character_data =
+            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
+                Ok(Some(data)) => data,
+                Ok(None) => return error_result(start_time, "角色不存在", None),
+                Err(error) => {
+                    return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
+                }
+            };
 
         let world_book = match character_data.card.data.character_book.as_mut() {
             Some(book) => book,
@@ -92,7 +93,8 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
             );
         }
 
-        match CharacterStorage::update_character(app_handle, &character_uuid, &character_data.card) {
+        match CharacterStorage::update_character(app_handle, &character_uuid, &character_data.card)
+        {
             Ok(()) => {
                 let entry_id = entry_snapshot["id"].clone();
                 let entry_name = entry_snapshot["name"].clone();
@@ -154,7 +156,9 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
             "name".to_string(),
             ChatToolParameter {
                 param_type: "string".to_string(),
-                description: Some("条目名称，也可作为定位字段；如果用于更新内容，请优先配合 entry_id".to_string()),
+                description: Some(
+                    "条目名称，也可作为定位字段；如果用于更新内容，请优先配合 entry_id".to_string(),
+                ),
                 enum_values: None,
                 items: None,
                 properties: None,

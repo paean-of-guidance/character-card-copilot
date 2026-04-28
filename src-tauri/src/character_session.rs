@@ -67,9 +67,10 @@ impl CharacterSession {
 
     /// 从磁盘刷新角色数据，保留当前会话历史与状态。
     pub fn refresh_character_data(&mut self, app_handle: &AppHandle) -> Result<(), String> {
-        let character_data =
-            crate::character_storage::CharacterStorage::get_character_by_uuid(app_handle, &self.uuid)?
-                .ok_or_else(|| format!("角色 {} 不存在", self.uuid))?;
+        let character_data = crate::character_storage::CharacterStorage::get_character_by_uuid(
+            app_handle, &self.uuid,
+        )?
+        .ok_or_else(|| format!("角色 {} 不存在", self.uuid))?;
 
         self.character_data = character_data;
         self.last_active = Utc::now();

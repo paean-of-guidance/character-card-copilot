@@ -76,10 +76,7 @@ impl AICancellationManager {
             return Ok(false);
         };
 
-        sender
-            .send(true)
-            .map(|_| true)
-            .or_else(|_| Ok(true))
+        sender.send(true).map(|_| true).or_else(|_| Ok(true))
     }
 
     pub fn finish_request(&self, session_uuid: &str, request_id: &str) {
