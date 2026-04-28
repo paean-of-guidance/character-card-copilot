@@ -1,4 +1,4 @@
-use super::AIToolTrait;
+use super::{error_result, success_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
@@ -9,8 +9,269 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
+const REQUIRED_FIELDS: &[&str] = &["keys", "content", "depth", "comment", "probability"];
+
 /// 世界书条目创建工具
 pub struct CreateWorldBookEntryTool;
+
+struct EntryParameterTarget<'a> {
+    entry: &'a mut WorldBookEntry,
+    extensions: &'a mut serde_json::Value,
+    world_book: &'a mut CharacterBook,
+}
+
+fn default_entry_extensions() -> serde_json::Value {
+    serde_json::json!({
+        "automation_id": "",
+        "case_sensitive": null,
+        "cooldown": 0,
+        "delay": 0,
+        "delay_until_recursion": false,
+        "depth": 5,
+        "display_index": 0,
+        "exclude_recursion": false,
+        "group": "",
+        "group_override": false,
+        "group_weight": 100,
+        "match_character_depth_prompt": false,
+        "match_character_description": false,
+        "match_character_personality": false,
+        "match_creator_notes": false,
+        "match_persona_description": false,
+        "match_scenario": false,
+        "match_whole_words": null,
+        "position": 4,
+        "prevent_recursion": false,
+        "probability": 100,
+        "role": 0,
+        "scan_depth": null,
+        "selectiveLogic": 0,
+        "sticky": 0,
+        "useProbability": true,
+        "use_group_scoring": false,
+        "vectorized": false,
+    })
+}
+
+fn next_entry_id(entries: &[WorldBookEntry]) -> i32 {
+    entries
+        .iter()
+        .filter_map(|entry| entry.id)
+        .max()
+        .unwrap_or(0)
+        + 1
+}
+
+fn next_insertion_order(entries: &[WorldBookEntry]) -> i32 {
+    entries
+        .iter()
+        .map(|entry| entry.insertion_order)
+        .max()
+        .unwrap_or(0)
+        + 1
+}
+
+fn create_empty_entry(id: i32, insertion_order: i32) -> WorldBookEntry {
+    WorldBookEntry {
+        id: Some(id),
+        name: None,
+        keys: Vec::new(),
+        content: String::new(),
+        extensions: serde_json::json!({}),
+        enabled: true,
+        insertion_order,
+        case_sensitive: Some(false),
+        priority: Some(10),
+        comment: None,
+        selective: None,
+        secondary_keys: None,
+        constant: None,
+        position: Some("before_char".to_string()),
+    }
+}
+
+fn missing_required_parameter(
+    parameters: &HashMap<String, serde_json::Value>,
+) -> Option<&'static str> {
+    REQUIRED_FIELDS
+        .iter()
+        .copied()
+        .find(|field| !parameters.contains_key(*field))
+}
+
+fn get_character_uuid(
+    request: &ToolCallRequest,
+    start_time: std::time::Instant,
+) -> Result<String, ToolResult> {
+    request
+        .character_uuid
+        .clone()
+        .ok_or_else(|| error_result(start_time, "缺少角色UUID"))
+}
+
+fn validate_required_parameters(
+    parameters: &HashMap<String, serde_json::Value>,
+    start_time: std::time::Instant,
+) -> Result<(), ToolResult> {
+    if let Some(field) = missing_required_parameter(parameters) {
+        return Err(error_result(start_time, format!("缺少必填参数: {}", field)));
+    }
+
+    Ok(())
+}
+
+fn load_character_data(
+    app_handle: &AppHandle,
+    character_uuid: &str,
+    start_time: std::time::Instant,
+) -> Result<crate::character_storage::CharacterData, ToolResult> {
+    match CharacterStorage::get_character_by_uuid(app_handle, character_uuid) {
+        Ok(Some(data)) => Ok(data),
+        Ok(None) => Err(error_result(start_time, "角色不存在")),
+        Err(error) => Err(error_result(
+            start_time,
+            format!("获取角色数据失败: {}", error),
+        )),
+    }
+}
+
+fn get_or_create_world_book(
+    character_data: &mut crate::character_storage::CharacterData,
+) -> &mut CharacterBook {
+    character_data
+        .card
+        .data
+        .character_book
+        .get_or_insert_with(|| CharacterBook {
+            name: None,
+            description: None,
+            scan_depth: Some(2),
+            token_budget: Some(500),
+            recursive_scanning: Some(false),
+            extensions: serde_json::json!({}),
+            entries: Vec::new(),
+        })
+}
+
+fn apply_entry_parameters(
+    entry: &mut WorldBookEntry,
+    extensions: &mut serde_json::Value,
+    world_book: &mut CharacterBook,
+    parameters: &HashMap<String, serde_json::Value>,
+) {
+    let mut parameter_target = EntryParameterTarget {
+        entry,
+        extensions,
+        world_book,
+    };
+
+    for (field_name, field_value) in parameters {
+        if field_name == "at_least_one_field" {
+            continue;
+        }
+
+        if let Some(value_str) = field_value.as_str() {
+            apply_entry_parameter(&mut parameter_target, field_name, value_str);
+        }
+    }
+}
+
+fn validate_created_entry(
+    entry: &WorldBookEntry,
+    start_time: std::time::Instant,
+) -> Result<(), ToolResult> {
+    if entry.keys.is_empty() {
+        return Err(error_result(start_time, "keys 参数不能为空"));
+    }
+
+    if entry.content.is_empty() {
+        return Err(error_result(start_time, "content 参数不能为空"));
+    }
+
+    Ok(())
+}
+
+fn apply_entry_parameter(target: &mut EntryParameterTarget<'_>, field_name: &str, value: &str) {
+    match field_name {
+        "keys" => target.entry.keys = parse_keys(value),
+        "content" => target.entry.content = value.to_string(),
+        "name" => target.entry.name = Some(value.to_string()),
+        "comment" => target.entry.comment = Some(value.to_string()),
+        "enabled" => target.entry.enabled = value.parse().unwrap_or(true),
+        "priority" => target.entry.priority = value.parse().ok(),
+        "position" => target.entry.position = Some(value.to_string()),
+        "depth" => set_extension_i32(target.extensions, "depth", value),
+        "probability" => set_extension_i32(target.extensions, "probability", value),
+        "scan_depth" => set_extension_i32(target.extensions, "scan_depth", value),
+        "token_budget" => set_token_budget(target.world_book, value),
+        "recursive_scanning" => set_recursive_scanning(target.world_book, value),
+        _ => target.extensions[field_name] = serde_json::Value::String(value.to_string()),
+    }
+}
+
+fn parse_keys(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn set_extension_i32(extensions: &mut serde_json::Value, key: &str, value: &str) {
+    if let Ok(number) = value.parse::<i32>() {
+        extensions[key] = serde_json::Value::Number(number.into());
+    }
+}
+
+fn set_token_budget(world_book: &mut CharacterBook, value: &str) {
+    if let Ok(number) = value.parse::<i32>() {
+        world_book.token_budget = Some(number);
+    }
+}
+
+fn set_recursive_scanning(world_book: &mut CharacterBook, value: &str) {
+    if let Ok(enabled) = value.parse::<bool>() {
+        world_book.recursive_scanning = Some(enabled);
+    }
+}
+
+fn emit_entry_created(
+    app_handle: &AppHandle,
+    character_uuid: &str,
+    entry_id: i32,
+    entry: &WorldBookEntry,
+) {
+    if let Err(error) = app_handle.emit(
+        "world-book-entry-created",
+        serde_json::json!({
+            "character_uuid": character_uuid,
+            "entry_id": entry_id,
+            "entry_name": entry.name,
+            "keys": entry.keys
+        }),
+    ) {
+        eprintln!("发送世界书条目创建事件失败: {}", error);
+    }
+}
+
+fn created_entry_result(
+    start_time: std::time::Instant,
+    entry_id: i32,
+    entry: WorldBookEntry,
+) -> ToolResult {
+    let content_preview = build_content_preview(&entry.content);
+    success_result(
+        start_time,
+        serde_json::json!({
+            "message": "世界书条目创建成功",
+            "entry_id": entry_id,
+            "entry_name": entry.name,
+            "keys": entry.keys,
+            "content_preview": content_preview
+        }),
+    )
+}
 
 #[async_trait]
 impl AIToolTrait for CreateWorldBookEntryTool {
@@ -28,275 +289,46 @@ impl AIToolTrait for CreateWorldBookEntryTool {
 
     async fn execute(&self, app_handle: &AppHandle, request: &ToolCallRequest) -> ToolResult {
         let start_time = std::time::Instant::now();
-
-        // 获取角色UUID
-        let character_uuid = match &request.character_uuid {
-            Some(uuid) => uuid.clone(),
-            None => {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some("缺少角色UUID".to_string()),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
+        let character_uuid = match get_character_uuid(request, start_time) {
+            Ok(uuid) => uuid,
+            Err(result) => return result,
         };
-
-        // 验证必填参数
-        let required_fields = vec!["keys", "content", "depth", "comment", "probability"];
-        for field in &required_fields {
-            if !request.parameters.contains_key(*field) {
-                return ToolResult {
-                    success: false,
-                    data: None,
-                    error: Some(format!("缺少必填参数: {}", field)),
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                };
-            }
+        if let Err(result) = validate_required_parameters(&request.parameters, start_time) {
+            return result;
         }
 
-        // 获取当前角色数据
-        let mut character_data =
-            match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
-                Ok(Some(data)) => data,
-                Ok(None) => {
-                    return ToolResult {
-                        success: false,
-                        data: None,
-                        error: Some("角色不存在".to_string()),
-                        execution_time_ms: start_time.elapsed().as_millis() as u64,
-                    };
-                }
-                Err(e) => {
-                    return ToolResult {
-                        success: false,
-                        data: None,
-                        error: Some(format!("获取角色数据失败: {}", e)),
-                        execution_time_ms: start_time.elapsed().as_millis() as u64,
-                    };
-                }
-            };
-
-        // 确保世界书存在
-        let world_book = character_data
-            .card
-            .data
-            .character_book
-            .get_or_insert_with(|| CharacterBook {
-                name: None,
-                description: None,
-                scan_depth: Some(2),
-                token_budget: Some(500),
-                recursive_scanning: Some(false),
-                extensions: serde_json::json!({}),
-                entries: Vec::new(),
-            });
-
-        // 生成新条目ID
-        let new_id = if world_book.entries.is_empty() {
-            1
-        } else {
-            world_book
-                .entries
-                .iter()
-                .filter_map(|e| e.id)
-                .max()
-                .unwrap_or(0)
-                + 1
+        let mut character_data = match load_character_data(app_handle, &character_uuid, start_time)
+        {
+            Ok(data) => data,
+            Err(result) => return result,
         };
+        let world_book = get_or_create_world_book(&mut character_data);
 
-        // 计算插入顺序
-        let insertion_order = if world_book.entries.is_empty() {
-            1
-        } else {
-            world_book
-                .entries
-                .iter()
-                .map(|e| e.insertion_order)
-                .max()
-                .unwrap_or(0)
-                + 1
-        };
+        let new_id = next_entry_id(&world_book.entries);
+        let insertion_order = next_insertion_order(&world_book.entries);
+        let mut extensions = default_entry_extensions();
+        let mut new_entry = create_empty_entry(new_id, insertion_order);
 
-        // 创建默认extensions
-        let mut extensions = serde_json::json!({
-            "automation_id": "",
-            "case_sensitive": null,
-            "cooldown": 0,
-            "delay": 0,
-            "delay_until_recursion": false,
-            "depth": 5,
-            "display_index": 0,
-            "exclude_recursion": false,
-            "group": "",
-            "group_override": false,
-            "group_weight": 100,
-            "match_character_depth_prompt": false,
-            "match_character_description": false,
-            "match_character_personality": false,
-            "match_creator_notes": false,
-            "match_persona_description": false,
-            "match_scenario": false,
-            "match_whole_words": null,
-            "position": 4,
-            "prevent_recursion": false,
-            "probability": 100,
-            "role": 0,
-            "scan_depth": null,
-            "selectiveLogic": 0,
-            "sticky": 0,
-            "useProbability": true,
-            "use_group_scoring": false,
-            "vectorized": false,
-        });
-
-        // 解析参数
-        let mut new_entry = WorldBookEntry {
-            id: Some(new_id),
-            name: None,
-            keys: Vec::new(),
-            content: String::new(),
-            extensions: serde_json::json!({}),
-            enabled: true,
-            insertion_order,
-            case_sensitive: Some(false),
-            priority: Some(10),
-            comment: None,
-            selective: None,
-            secondary_keys: None,
-            constant: None,
-            position: Some("before_char".to_string()),
-        };
-
-        // 处理参数
-        for (field_name, field_value) in &request.parameters {
-            // 忽略提示字段
-            if field_name == "at_least_one_field" {
-                continue;
-            }
-
-            if let Some(value_str) = field_value.as_str() {
-                match field_name.as_str() {
-                    "keys" => {
-                        new_entry.keys = value_str
-                            .split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect();
-                    }
-                    "content" => {
-                        new_entry.content = value_str.to_string();
-                    }
-                    "name" => {
-                        new_entry.name = Some(value_str.to_string());
-                    }
-                    "comment" => {
-                        new_entry.comment = Some(value_str.to_string());
-                    }
-                    "enabled" => {
-                        new_entry.enabled = value_str.parse().unwrap_or(true);
-                    }
-                    "priority" => {
-                        new_entry.priority = value_str.parse().ok();
-                    }
-                    "position" => {
-                        new_entry.position = Some(value_str.to_string());
-                    }
-                    "depth" => {
-                        if let Ok(depth_val) = value_str.parse::<i32>() {
-                            extensions["depth"] = serde_json::Value::Number(depth_val.into());
-                        }
-                    }
-                    "probability" => {
-                        if let Ok(prob_val) = value_str.parse::<i32>() {
-                            extensions["probability"] = serde_json::Value::Number(prob_val.into());
-                        }
-                    }
-                    "scan_depth" => {
-                        if let Ok(scan_val) = value_str.parse::<i32>() {
-                            extensions["scan_depth"] = serde_json::Value::Number(scan_val.into());
-                        }
-                    }
-                    "token_budget" => {
-                        if let Ok(budget_val) = value_str.parse::<i32>() {
-                            world_book.token_budget = Some(budget_val);
-                        }
-                    }
-                    "recursive_scanning" => {
-                        if let Ok(recursive_val) = value_str.parse::<bool>() {
-                            world_book.recursive_scanning = Some(recursive_val);
-                        }
-                    }
-                    _ => {
-                        // 其他extension字段
-                        extensions[field_name] = serde_json::Value::String(value_str.to_string());
-                    }
-                }
-            }
-        }
-
-        // 验证必填字段
-        if new_entry.keys.is_empty() {
-            return ToolResult {
-                success: false,
-                data: None,
-                error: Some("keys 参数不能为空".to_string()),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-            };
-        }
-
-        if new_entry.content.is_empty() {
-            return ToolResult {
-                success: false,
-                data: None,
-                error: Some("content 参数不能为空".to_string()),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-            };
+        apply_entry_parameters(
+            &mut new_entry,
+            &mut extensions,
+            world_book,
+            &request.parameters,
+        );
+        if let Err(result) = validate_created_entry(&new_entry, start_time) {
+            return result;
         }
 
         new_entry.extensions = extensions;
-
-        // 添加到世界书
         world_book.entries.push(new_entry.clone());
 
-        // 保存角色数据
         match CharacterStorage::update_character(app_handle, &character_uuid, &character_data.card)
         {
             Ok(()) => {
-                // 发送事件通知前端
-                if let Err(e) = app_handle.emit(
-                    "world-book-entry-created",
-                    serde_json::json!({
-                        "character_uuid": character_uuid,
-                        "entry_id": new_id,
-                        "entry_name": new_entry.name,
-                        "keys": new_entry.keys
-                    }),
-                ) {
-                    eprintln!("发送世界书条目创建事件失败: {}", e);
-                }
-
-                let content_preview = build_content_preview(&new_entry.content);
-
-                ToolResult {
-                    success: true,
-                    data: Some(serde_json::json!({
-                        "message": "世界书条目创建成功",
-                        "entry_id": new_id,
-                        "entry_name": new_entry.name,
-                        "keys": new_entry.keys,
-                        "content_preview": content_preview
-                    })),
-                    error: None,
-                    execution_time_ms: start_time.elapsed().as_millis() as u64,
-                }
+                emit_entry_created(app_handle, &character_uuid, new_id, &new_entry);
+                created_entry_result(start_time, new_id, new_entry)
             }
-            Err(e) => ToolResult {
-                success: false,
-                data: None,
-                error: Some(format!("保存世界书条目失败: {}", e)),
-                execution_time_ms: start_time.elapsed().as_millis() as u64,
-            },
+            Err(e) => error_result(start_time, format!("保存世界书条目失败: {}", e)),
         }
     }
 

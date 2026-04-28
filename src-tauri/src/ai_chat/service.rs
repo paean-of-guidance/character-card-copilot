@@ -1,11 +1,12 @@
+use super::types::*;
+use super::{adapter, formatting};
 use crate::ai_cancellation::ActiveCancellationRequest;
 use crate::ai_tools::{ToolCallRequest, ToolDefinition};
-use crate::api_config::{ApiConfig, ApiProvider};
-use crate::backend::application::event_bus::EventBus;
+use crate::api_config::ApiConfig;
 use crate::backend::domain::{ReasoningDeltaKind, ToolExecutionPhase};
+use crate::events::EventEmitter;
 use crate::tools::ToolRegistry;
 use futures_util::StreamExt;
-use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage as GenAiChatMessage, ChatOptions as GenAiChatOptions,
     ChatRequest as GenAiChatRequest, ChatResponse as GenAiChatResponse,
@@ -14,143 +15,7 @@ use genai::chat::{
 };
 use genai::resolver::{AuthData, Endpoint, ServiceTargetResolver};
 use genai::{Client, ModelIden, ServiceTarget};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-/// 聊天消息角色
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum MessageRole {
-    System,
-    User,
-    Assistant,
-    Tool,
-}
-
-/// 聊天消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: MessageRole,
-    pub content: String,
-    pub name: Option<String>,
-    pub reasoning_content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCallData>>,
-    pub tool_call_id: Option<String>,
-}
-
-/// 工具调用数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallData {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub call_type: String,
-    pub function: ToolCallFunctionData,
-    pub thought_signatures: Option<Vec<String>>,
-}
-
-/// 工具调用函数数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallFunctionData {
-    pub name: String,
-    pub arguments: String,
-}
-
-/// 工具调用偏好
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ToolChoice {
-    String(String),
-    Function {
-        #[serde(rename = "type")]
-        choice_type: String,
-        function: ToolTarget,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolTarget {
-    pub name: String,
-}
-
-/// 停止序列
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StopSequence {
-    Single(String),
-    Multiple(Vec<String>),
-}
-
-/// 使用统计
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
-}
-
-/// 聊天完成选择
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionChoice {
-    pub index: u32,
-    pub message: ChatMessage,
-    #[serde(rename = "finish_reason")]
-    pub finish_reason: String,
-}
-
-/// 聊天完成响应
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    #[serde(rename = "system_fingerprint")]
-    pub system_fingerprint: Option<String>,
-    pub choices: Vec<ChatCompletionChoice>,
-    pub usage: Usage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub intermediate_messages: Option<Vec<ChatMessage>>,
-}
-
-/// 聊天完成请求
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionRequest {
-    pub model: String,
-    pub messages: Vec<ChatMessage>,
-    pub temperature: Option<f64>,
-    pub max_tokens: Option<u32>,
-    pub top_p: Option<f64>,
-    pub frequency_penalty: Option<f64>,
-    pub presence_penalty: Option<f64>,
-    pub stop: Option<StopSequence>,
-    pub stream: Option<bool>,
-    pub tools: Option<Vec<ToolDefinition>>,
-    pub tool_choice: Option<ToolChoice>,
-}
-
-#[derive(Debug, Clone)]
-struct ToolExecutionOutput {
-    tool_message: ChatMessage,
-    success: bool,
-    data: Option<serde_json::Value>,
-    error: Option<String>,
-    execution_time_ms: u64,
-}
-
-pub const AI_RESPONSE_INTERRUPTED_ERROR: &str = "AI 响应已中断";
-
-#[derive(Debug, Clone)]
-pub struct AbortedGeneration {
-    pub content: String,
-    pub reasoning_content: Option<String>,
-    pub intermediate_messages: Vec<ChatMessage>,
-}
-
-#[derive(Debug, Clone)]
-pub enum AIChatError {
-    Aborted(AbortedGeneration),
-    Failed(String),
-}
 
 impl AIChatError {
     fn failed(message: impl Into<String>) -> Self {
@@ -185,7 +50,7 @@ impl AIChatService {
                 let model_name = service_target.model.model_name;
                 let endpoint = Endpoint::from_owned(base_url.clone());
                 let auth = AuthData::from_single(api_key.clone());
-                let model = ModelIden::new(provider.adapter_kind(), model_name);
+                let model = ModelIden::new(adapter::adapter_kind(provider), model_name);
                 Ok(ServiceTarget {
                     endpoint,
                     auth,
@@ -394,7 +259,7 @@ impl AIChatService {
         let result = ToolRegistry::execute_tool_call_global(app_handle, &request).await;
         let data = result.data.clone();
         let error = result.error.clone();
-        let tool_result = Self::format_tool_message(
+        let tool_result = formatting::format_tool_message(
             &tool_call.function.name,
             result.success,
             data.as_ref(),
@@ -415,491 +280,6 @@ impl AIChatService {
             error,
             execution_time_ms: result.execution_time_ms,
         }
-    }
-
-    fn format_tool_message(
-        tool_name: &str,
-        success: bool,
-        data: Option<&serde_json::Value>,
-        error: Option<&str>,
-    ) -> String {
-        if !success {
-            return Self::format_tool_error(tool_name, error, data);
-        }
-
-        match tool_name {
-            "patch_character_field" => Self::format_patch_character_field_result(data),
-            "read_character_field" => Self::format_read_character_field_result(data),
-            "edit_character" => Self::format_edit_character_result(data),
-            "list_world_book_entries" => Self::format_list_world_book_entries_result(data),
-            "read_world_book_entry" => Self::format_read_world_book_entry_result(data),
-            "create_world_book_entry" => Self::format_create_world_book_entry_result(data),
-            "update_world_book_entry" => Self::format_update_world_book_entry_result(data),
-            "delete_world_book_entry" => Self::format_delete_world_book_entry_result(data),
-            _ => Self::format_generic_tool_result(tool_name, data),
-        }
-    }
-
-    fn format_tool_error(
-        tool_name: &str,
-        error: Option<&str>,
-        data: Option<&serde_json::Value>,
-    ) -> String {
-        let mut lines = vec![format!("failed {tool_name}")];
-
-        if let Some(error) = error.filter(|value| !value.trim().is_empty()) {
-            lines.push(error.to_string());
-        }
-
-        if tool_name == "patch_character_field" {
-            if let Some(details) = data
-                .and_then(Self::as_object)
-                .and_then(|object| object.get("details"))
-            {
-                let patch_lines = Self::format_patch_failure_details(details);
-                if !patch_lines.is_empty() {
-                    lines.extend(patch_lines);
-                    return lines.join("\n");
-                }
-            }
-        }
-
-        if let Some(data) = data {
-            let rendered = Self::render_value_lines(data);
-            if !rendered.is_empty() {
-                lines.extend(rendered);
-            }
-        }
-
-        lines.join("\n")
-    }
-
-    fn format_patch_character_field_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok patch_character_field".to_string();
-        };
-
-        let field = Self::get_string(data, "field");
-        let operation = Self::get_string(data, "operation");
-        let match_mode = Self::get_string(data, "match_mode");
-        let dry_run = data.get("dry_run").and_then(|value| value.as_bool());
-
-        let mut meta = Vec::new();
-        if let Some(field) = field {
-            meta.push(format!("field={field}"));
-        }
-        if let Some(operation) = operation {
-            meta.push(format!("op={operation}"));
-        }
-        if let Some(match_mode) = match_mode {
-            meta.push(format!("match={match_mode}"));
-        }
-        if let Some(dry_run) = dry_run {
-            meta.push(format!("dry_run={dry_run}"));
-        }
-
-        let matched_context = data.get("matched_context").and_then(Self::as_object);
-        let updated_context = data.get("updated_context").and_then(Self::as_object);
-        let before_lines = matched_context
-            .map(|context| Self::build_context_diff_lines(context, "matched_text", "-"))
-            .unwrap_or_default();
-        let after_lines = updated_context
-            .map(|context| Self::build_context_diff_lines(context, "selected_text", "+"))
-            .unwrap_or_default();
-
-        if !before_lines.is_empty() || !after_lines.is_empty() {
-            let mut diff_lines = before_lines;
-            diff_lines.extend(after_lines);
-            return Self::format_change_result(
-                "patch_character_field",
-                meta,
-                Some(Self::format_fenced_block("diff", &diff_lines.join("\n"))),
-            );
-        }
-
-        let body = Self::get_string(data, "updated_preview");
-        Self::format_change_result("patch_character_field", meta, body)
-    }
-
-    fn format_read_character_field_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok read_character_field".to_string();
-        };
-
-        let mut meta = Vec::new();
-        let mut label = "text".to_string();
-        let mut text_body = None;
-        if let Some(field) = Self::get_string(data, "field") {
-            label = field.clone();
-            let start = data
-                .get("start")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
-            let end = data
-                .get("end")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
-            let total = data
-                .get("total_length")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
-            let truncated = data
-                .get("truncated")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            meta.push(format!(
-                "field={field} | range={start}..{end}/{total}{}",
-                if truncated { " | truncated" } else { "" }
-            ));
-            if let Some(text) = Self::get_string(data, "text") {
-                text_body = Some(text);
-            }
-        } else if let Some(text) = Self::get_string(data, "text") {
-            text_body = Some(text);
-        }
-
-        Self::format_read_result("read_character_field", meta, &label, text_body.as_deref())
-    }
-
-    fn format_edit_character_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok edit_character".to_string();
-        };
-
-        let updated_fields = data
-            .get("updated_fields")
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Self::as_object)
-                    .filter_map(|item| Self::get_string(item, "field"))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        if updated_fields.is_empty() {
-            return "ok edit_character".to_string();
-        }
-
-        Self::format_change_result(
-            "edit_character",
-            vec![format!("updated={}", updated_fields.len())],
-            Some(format!("fields: {}", updated_fields.join(", "))),
-        )
-    }
-
-    fn format_list_world_book_entries_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data else {
-            return "ok list_world_book_entries".to_string();
-        };
-
-        Self::format_structured_result("list_world_book_entries", Vec::new(), data)
-    }
-
-    fn format_read_world_book_entry_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data else {
-            return "ok read_world_book_entry".to_string();
-        };
-
-        Self::format_structured_result("read_world_book_entry", Vec::new(), data)
-    }
-
-    fn format_create_world_book_entry_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok create_world_book_entry".to_string();
-        };
-
-        let mut meta = Vec::new();
-        if let Some(entry_id) = data.get("entry_id").and_then(|value| value.as_i64()) {
-            meta.push(format!("entry_id={entry_id}"));
-        }
-        if let Some(name) = Self::get_string(data, "entry_name") {
-            meta.push(format!("name={name}"));
-        }
-        Self::format_change_result(
-            "create_world_book_entry",
-            meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(
-                data.clone(),
-            ))),
-        )
-    }
-
-    fn format_update_world_book_entry_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok update_world_book_entry".to_string();
-        };
-
-        let mut meta = Vec::new();
-        if let Some(matched_by) = Self::get_string(data, "matched_by") {
-            meta.push(format!("matched_by={matched_by}"));
-        }
-        if let Some(matched_value) = data.get("matched_value") {
-            meta.push(format!(
-                "matched_value={}",
-                Self::value_to_inline(matched_value)
-            ));
-        }
-        if let Some(updated_fields) = data
-            .get("updated_fields")
-            .and_then(Self::value_as_string_list)
-        {
-            meta.push(format!("updated={}", updated_fields.join(", ")));
-        }
-
-        Self::format_change_result(
-            "update_world_book_entry",
-            meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(
-                data.clone(),
-            ))),
-        )
-    }
-
-    fn format_delete_world_book_entry_result(data: Option<&serde_json::Value>) -> String {
-        let Some(data) = data.and_then(Self::as_object) else {
-            return "ok delete_world_book_entry".to_string();
-        };
-
-        let mut meta = Vec::new();
-        if let Some(matched_by) = Self::get_string(data, "matched_by") {
-            meta.push(format!("matched_by={matched_by}"));
-        }
-        if let Some(matched_value) = data.get("matched_value") {
-            meta.push(format!(
-                "matched_value={}",
-                Self::value_to_inline(matched_value)
-            ));
-        }
-        Self::format_change_result(
-            "delete_world_book_entry",
-            meta,
-            Some(Self::format_yaml_block(&serde_json::Value::Object(
-                data.clone(),
-            ))),
-        )
-    }
-
-    fn format_generic_tool_result(tool_name: &str, data: Option<&serde_json::Value>) -> String {
-        let mut lines = vec![format!("ok {tool_name}")];
-        if let Some(data) = data {
-            let rendered = Self::render_value_lines(data);
-            if !rendered.is_empty() {
-                lines.extend(rendered);
-            }
-        }
-        lines.join("\n")
-    }
-
-    fn format_patch_failure_details(details: &serde_json::Value) -> Vec<String> {
-        let Some(details) = Self::as_object(details) else {
-            return Vec::new();
-        };
-
-        let mut lines = Vec::new();
-        if let Some(supported_fields) = details
-            .get("supported_fields")
-            .and_then(Self::value_as_string_list)
-        {
-            lines.push(format!("supported_fields: {}", supported_fields.join(", ")));
-        }
-        if let Some(candidates) = details.get("candidates").and_then(|value| value.as_array()) {
-            for (index, candidate) in candidates.iter().enumerate() {
-                if let Some(candidate) = Self::as_object(candidate) {
-                    let rendered = Self::build_context_diff_lines(candidate, "matched_text", "=");
-                    if !rendered.is_empty() {
-                        lines.push(format!("candidate {}:", index + 1));
-                        lines.extend(rendered);
-                    }
-                }
-            }
-        }
-        if let Some(fragments) = details
-            .get("fragment_matches")
-            .and_then(|value| value.as_array())
-        {
-            for (index, fragment) in fragments.iter().enumerate() {
-                if let Some(fragment) = Self::as_object(fragment) {
-                    let line = Self::compose_context_line(
-                        Self::get_string(fragment, "context_before")
-                            .as_deref()
-                            .unwrap_or(""),
-                        Self::get_string(fragment, "fragment")
-                            .as_deref()
-                            .unwrap_or(""),
-                        Self::get_string(fragment, "context_after")
-                            .as_deref()
-                            .unwrap_or(""),
-                    );
-                    lines.push(format!("fragment {}: {}", index + 1, line));
-                }
-            }
-        }
-
-        lines
-    }
-
-    fn build_context_diff_lines(
-        context: &serde_json::Map<String, serde_json::Value>,
-        focus_key: &str,
-        prefix: &str,
-    ) -> Vec<String> {
-        let before = Self::get_string(context, "context_before").unwrap_or_default();
-        let focus = Self::get_string(context, focus_key).unwrap_or_default();
-        let after = Self::get_string(context, "context_after").unwrap_or_default();
-        let combined = Self::compose_context_line(&before, &focus, &after);
-        combined
-            .lines()
-            .take(6)
-            .map(|line| format!("{prefix} {line}"))
-            .collect()
-    }
-
-    fn compose_context_line(before: &str, focus: &str, after: &str) -> String {
-        format!("{before}{focus}{after}")
-            .replace('\r', "")
-            .trim()
-            .to_string()
-    }
-
-    fn render_value_lines(value: &serde_json::Value) -> Vec<String> {
-        match value {
-            serde_json::Value::Null => Vec::new(),
-            serde_json::Value::Bool(_)
-            | serde_json::Value::Number(_)
-            | serde_json::Value::String(_) => {
-                vec![Self::value_to_inline(value)]
-            }
-            serde_json::Value::Array(items) => items
-                .iter()
-                .enumerate()
-                .flat_map(|(index, item)| {
-                    let inline = Self::value_to_inline(item);
-                    if inline.contains('\n') {
-                        let mut lines = vec![format!("{}.", index + 1)];
-                        lines.extend(
-                            inline
-                                .lines()
-                                .map(|line| format!("  {line}"))
-                                .collect::<Vec<_>>(),
-                        );
-                        lines
-                    } else {
-                        vec![format!("{}. {inline}", index + 1)]
-                    }
-                })
-                .collect(),
-            serde_json::Value::Object(map) => map
-                .iter()
-                .map(|(key, value)| format!("{key}: {}", Self::value_to_inline(value)))
-                .collect(),
-        }
-    }
-
-    fn value_to_inline(value: &serde_json::Value) -> String {
-        match value {
-            serde_json::Value::Null => "null".to_string(),
-            serde_json::Value::Bool(value) => value.to_string(),
-            serde_json::Value::Number(value) => value.to_string(),
-            serde_json::Value::String(value) => value.clone(),
-            serde_json::Value::Array(items) => items
-                .iter()
-                .map(Self::value_to_inline)
-                .collect::<Vec<_>>()
-                .join(", "),
-            serde_json::Value::Object(map) => map
-                .iter()
-                .map(|(key, value)| format!("{key}={}", Self::value_to_inline(value)))
-                .collect::<Vec<_>>()
-                .join(" | "),
-        }
-    }
-
-    fn value_as_string_list(value: &serde_json::Value) -> Option<Vec<String>> {
-        value.as_array().map(|items| {
-            items
-                .iter()
-                .map(Self::value_to_inline)
-                .filter(|item| !item.is_empty())
-                .collect::<Vec<_>>()
-        })
-    }
-
-    fn get_string(
-        object: &serde_json::Map<String, serde_json::Value>,
-        key: &str,
-    ) -> Option<String> {
-        object.get(key).and_then(|value| match value {
-            serde_json::Value::String(text) => Some(text.clone()),
-            serde_json::Value::Null => None,
-            _ => Some(Self::value_to_inline(value)),
-        })
-    }
-
-    fn as_object(value: &serde_json::Value) -> Option<&serde_json::Map<String, serde_json::Value>> {
-        value.as_object()
-    }
-
-    fn format_fenced_block(language: &str, body: &str) -> String {
-        format!("```{language}\n{body}\n```")
-    }
-
-    fn format_change_result(tool_name: &str, meta: Vec<String>, body: Option<String>) -> String {
-        let mut lines = vec![format!("ok {tool_name}")];
-        if !meta.is_empty() {
-            lines.push(meta.join(" | "));
-        }
-        if let Some(body) = body.filter(|value| !value.trim().is_empty()) {
-            lines.push(body);
-        }
-        lines.join("\n")
-    }
-
-    fn format_read_result(
-        tool_name: &str,
-        meta: Vec<String>,
-        label: &str,
-        text: Option<&str>,
-    ) -> String {
-        let mut lines = vec![format!("ok {tool_name}")];
-        if !meta.is_empty() {
-            lines.push(meta.join(" | "));
-        }
-        if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
-            lines.push(Self::format_numbered_text_block(label, text));
-        }
-        lines.join("\n")
-    }
-
-    fn format_structured_result(
-        tool_name: &str,
-        meta: Vec<String>,
-        value: &serde_json::Value,
-    ) -> String {
-        let mut lines = vec![format!("ok {tool_name}")];
-        if !meta.is_empty() {
-            lines.push(meta.join(" | "));
-        }
-        lines.push(Self::format_yaml_block(value));
-        lines.join("\n")
-    }
-
-    fn format_numbered_text_block(label: &str, text: &str) -> String {
-        let numbered = text
-            .lines()
-            .enumerate()
-            .map(|(index, line)| format!("{} {}", index + 1, line))
-            .collect::<Vec<_>>()
-            .join("\n");
-        Self::format_fenced_block(label, &numbered)
-    }
-
-    fn format_yaml_block(value: &serde_json::Value) -> String {
-        let yaml = serde_yaml::to_string(value)
-            .unwrap_or_else(|_| Self::render_value_lines(value).join("\n"));
-        let yaml = yaml.strip_prefix("---\n").unwrap_or(&yaml).trim_end();
-        Self::format_fenced_block("yaml", yaml)
     }
 
     fn build_chat_request(
@@ -1001,7 +381,7 @@ impl AIChatService {
         character_uuid: &str,
         target_message_id: &str,
     ) {
-        if let Err(error) = EventBus::message_stream_delta(
+        if let Err(error) = EventEmitter::send_message_stream_delta(
             app_handle,
             character_uuid,
             target_message_id,
@@ -1013,7 +393,7 @@ impl AIChatService {
             eprintln!("发送流式中止事件失败: {error}");
         }
 
-        if let Err(error) = EventBus::message_reasoning_delta(
+        if let Err(error) = EventEmitter::send_message_reasoning_delta(
             app_handle,
             character_uuid,
             target_message_id,
@@ -1078,7 +458,7 @@ impl AIChatService {
                 )));
             }
 
-            if let Err(error) = EventBus::tool_execution_status(
+            if let Err(error) = EventEmitter::send_tool_execution_status(
                 app_handle,
                 character_uuid,
                 target_message_id,
@@ -1099,7 +479,7 @@ impl AIChatService {
                 ToolExecutionPhase::Failed
             };
 
-            if let Err(error) = EventBus::tool_execution_status(
+            if let Err(error) = EventEmitter::send_tool_execution_status(
                 app_handle,
                 character_uuid,
                 target_message_id,
@@ -1112,7 +492,7 @@ impl AIChatService {
                 eprintln!("发送工具状态事件失败: {error}");
             }
 
-            if let Err(error_message) = EventBus::tool_executed(
+            if let Err(error_message) = EventEmitter::send_tool_executed(
                 app_handle,
                 character_uuid,
                 &tool_call.function.name,
@@ -1214,7 +594,7 @@ impl AIChatService {
                         if !chunk.content.is_empty() {
                             emitted_delta = true;
                             streamed_content.push_str(&chunk.content);
-                            EventBus::message_stream_delta(
+                            EventEmitter::send_message_stream_delta(
                                 app_handle,
                                 &character_uuid,
                                 target_message_id,
@@ -1229,7 +609,7 @@ impl AIChatService {
                         if !chunk.content.is_empty() {
                             emitted_reasoning_delta = true;
                             streamed_reasoning.push_str(&chunk.content);
-                            EventBus::message_reasoning_delta(
+                            EventEmitter::send_message_reasoning_delta(
                                 app_handle,
                                 &character_uuid,
                                 target_message_id,
@@ -1244,7 +624,7 @@ impl AIChatService {
                         if !chunk.content.is_empty() {
                             emitted_reasoning_delta = true;
                             streamed_reasoning.push_str(&chunk.content);
-                            EventBus::message_reasoning_delta(
+                            EventEmitter::send_message_reasoning_delta(
                                 app_handle,
                                 &character_uuid,
                                 target_message_id,
@@ -1283,7 +663,7 @@ impl AIChatService {
             let has_visible_stream_content = emitted_delta || !assistant_message.content.is_empty();
 
             if !assistant_message.content.is_empty() && !emitted_delta {
-                EventBus::message_stream_delta(
+                EventEmitter::send_message_stream_delta(
                     app_handle,
                     &character_uuid,
                     target_message_id,
@@ -1295,7 +675,7 @@ impl AIChatService {
             }
 
             if has_visible_stream_content {
-                EventBus::message_stream_delta(
+                EventEmitter::send_message_stream_delta(
                     app_handle,
                     &character_uuid,
                     target_message_id,
@@ -1307,7 +687,7 @@ impl AIChatService {
             }
 
             if emitted_reasoning_delta {
-                EventBus::message_reasoning_delta(
+                EventEmitter::send_message_reasoning_delta(
                     app_handle,
                     &character_uuid,
                     target_message_id,
@@ -1391,17 +771,6 @@ impl AIChatService {
                 AIChatError::Failed(message) => message,
                 AIChatError::Aborted(_) => AI_RESPONSE_INTERRUPTED_ERROR.to_string(),
             })?;
-        }
-    }
-}
-
-impl ApiProvider {
-    fn adapter_kind(self) -> AdapterKind {
-        match self {
-            ApiProvider::OpenAiCompatible => AdapterKind::OpenAI,
-            ApiProvider::OpenAiResponses => AdapterKind::OpenAIResp,
-            ApiProvider::Claude => AdapterKind::Anthropic,
-            ApiProvider::GeminiV1Beta => AdapterKind::Gemini,
         }
     }
 }

@@ -159,7 +159,7 @@ impl CharacterSession {
     }
 
     /// 保存聊天历史到文件（增量保存）
-    pub async fn save_history(&mut self, app_handle: &AppHandle) -> Result<(), String> {
+    pub fn save_history_now(&mut self, app_handle: &AppHandle) -> Result<(), String> {
         let history_manager = ChatHistoryManager::new(app_handle, &self.uuid);
 
         // 只保存新增的消息（从 last_saved_index 开始）
@@ -175,8 +175,13 @@ impl CharacterSession {
         Ok(())
     }
 
+    /// 保存聊天历史到文件（增量保存）
+    pub async fn save_history(&mut self, app_handle: &AppHandle) -> Result<(), String> {
+        self.save_history_now(app_handle)
+    }
+
     /// 完全重写历史文件（用于删除/编辑场景）
-    pub async fn rewrite_all_history(&mut self, app_handle: &AppHandle) -> Result<(), String> {
+    pub fn rewrite_all_history_now(&mut self, app_handle: &AppHandle) -> Result<(), String> {
         let history_manager = ChatHistoryManager::new(app_handle, &self.uuid);
 
         // 使用 ChatHistoryManager 的 save_history 方法完全重写文件
@@ -297,6 +302,50 @@ impl SessionManager {
         sessions.insert(session.uuid.clone(), session.clone());
 
         Ok(session)
+    }
+
+    /// 在锁内获取或创建会话并执行一次短生命周期修改。
+    pub fn with_session<T>(
+        &self,
+        app_handle: &AppHandle,
+        uuid: String,
+        action: impl FnOnce(&mut CharacterSession) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| format!("锁定会话失败: {}", e))?;
+
+        if sessions.len() >= self.max_sessions && !sessions.contains_key(&uuid) {
+            self.cleanup_old_sessions(&mut sessions)?;
+        }
+
+        if !sessions.contains_key(&uuid) {
+            let session = CharacterSession::load(app_handle, uuid.clone())?;
+            sessions.insert(uuid.clone(), session);
+        }
+
+        let session = sessions
+            .get_mut(&uuid)
+            .ok_or_else(|| format!("会话 {} 不存在", uuid))?;
+        session.refresh_character_data(app_handle)?;
+        action(session)
+    }
+
+    /// 在锁内修改已存在的会话。
+    pub fn with_existing_session<T>(
+        &self,
+        uuid: &str,
+        action: impl FnOnce(&mut CharacterSession) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| format!("锁定会话失败: {}", e))?;
+        let session = sessions
+            .get_mut(uuid)
+            .ok_or_else(|| format!("会话 {} 不存在", uuid))?;
+        action(session)
     }
 
     /// 更新会话

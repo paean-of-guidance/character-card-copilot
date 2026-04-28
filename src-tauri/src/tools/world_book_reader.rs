@@ -1,4 +1,4 @@
-use super::AIToolTrait;
+use super::{detailed_error_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
@@ -31,26 +31,32 @@ impl AIToolTrait for ReadWorldBookEntryTool {
 
         let character_uuid = match &request.character_uuid {
             Some(uuid) => uuid.clone(),
-            None => return error_result(start_time, "缺少角色UUID", None),
+            None => return detailed_error_result(start_time, "缺少角色UUID", None),
         };
 
         let character_data =
             match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
                 Ok(Some(data)) => data,
-                Ok(None) => return error_result(start_time, "角色不存在", None),
+                Ok(None) => return detailed_error_result(start_time, "角色不存在", None),
                 Err(error) => {
-                    return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
+                    return detailed_error_result(
+                        start_time,
+                        &format!("获取角色数据失败: {}", error),
+                        None,
+                    )
                 }
             };
 
         let world_book = match character_data.card.data.character_book.as_ref() {
             Some(book) => book,
-            None => return error_result(start_time, "当前角色没有世界书", None),
+            None => return detailed_error_result(start_time, "当前角色没有世界书", None),
         };
 
         let selection = match locate_entry(&world_book.entries, &request.parameters, "读取") {
             Ok(selection) => selection,
-            Err(error) => return error_result(start_time, &error.message, Some(error.details)),
+            Err(error) => {
+                return detailed_error_result(start_time, &error.message, Some(error.details))
+            }
         };
 
         let entry = &world_book.entries[selection.index];
@@ -127,18 +133,5 @@ impl AIToolTrait for ReadWorldBookEntryTool {
                 }),
             },
         }
-    }
-}
-
-fn error_result(
-    start_time: std::time::Instant,
-    message: &str,
-    details: Option<serde_json::Value>,
-) -> ToolResult {
-    ToolResult {
-        success: false,
-        data: details.map(|details| json!({ "details": details })),
-        error: Some(message.to_string()),
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
     }
 }

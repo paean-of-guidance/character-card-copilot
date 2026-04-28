@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TagInput from "./TagInput.vue";
+import { parseAlternateGreetingSegments } from "@/utils/characterFieldFormatters";
 
 const props = defineProps<{
     characterData: any;
@@ -10,17 +11,6 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: "update-field", field: string, oldValue: any, newValue: any): void;
 }>();
-
-const ALTERNATE_GREETING_MARKER = "<START_ALT>";
-
-function splitAlternateGreetings(value: string) {
-    return value
-        ? value
-              .split(ALTERNATE_GREETING_MARKER)
-              .map((segment) => segment.trim())
-              .filter((segment) => segment.length > 0)
-        : [];
-}
 
 function onUpdateField(field: string, oldValue: any, newValue: any) {
     emit("update-field", field, oldValue, newValue);
@@ -127,9 +117,9 @@ function totalTokens(): number {
                 <p class="mb-2 text-xs text-white/35">
                     使用 &lt;START_ALT&gt; 标记每段备用开场白的开头，可定义多段。
                 </p>
-                <textarea
-                    v-model="props.characterData.alternate_greetings"
-                    @blur="onUpdateField('alternate_greetings', props.fullCharacterData?.card?.data?.alternate_greetings || [], splitAlternateGreetings(props.characterData.alternate_greetings || ''))"
+                        <textarea
+                        v-model="props.characterData.alternate_greetings"
+                        @blur="onUpdateField('alternate_greetings', props.fullCharacterData?.card?.data?.alternate_greetings || [], parseAlternateGreetingSegments(props.characterData.alternate_greetings || ''))"
                     class="liquid-textarea"
                     rows="10"
                     placeholder="备用开场白，使用 <START_ALT> 标记每段开头"

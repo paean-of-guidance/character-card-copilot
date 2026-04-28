@@ -1,4 +1,4 @@
-use super::AIToolTrait;
+use super::{error_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
@@ -130,14 +130,5 @@ impl AIToolTrait for ListWorldBookEntriesTool {
                 }),
             },
         }
-    }
-}
-
-fn error_result(start_time: std::time::Instant, message: &str) -> ToolResult {
-    ToolResult {
-        success: false,
-        data: None,
-        error: Some(message.to_string()),
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
     }
 }

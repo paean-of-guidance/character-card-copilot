@@ -1,8 +1,8 @@
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::{CommandCategory, CommandMetadata, CommandResult};
 use crate::character_session::SESSION_MANAGER;
 use crate::chat_history::ChatHistoryManager;
 use crate::command_system::command::*;
+use crate::events::EventEmitter;
 use async_trait::async_trait;
 
 /// /clear 命令 - 清空所有对话记录
@@ -62,7 +62,7 @@ impl CommandExecutor for ClearCommand {
         SESSION_MANAGER.update_session(session)?;
 
         // 发送事件通知前端
-        EventBus::chat_history_loaded(&context.app_handle, &uuid, &[])?;
+        EventEmitter::send_chat_history_loaded(&context.app_handle, &uuid, &[])?;
 
         Ok(CommandResult {
             success: true,

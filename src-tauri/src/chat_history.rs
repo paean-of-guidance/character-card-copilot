@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -35,9 +35,20 @@ pub struct ToolFunction {
     pub arguments: String,
 }
 
+fn parse_history_line(line: &str) -> Result<Option<ChatMessage>, String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    serde_json::from_str::<ChatMessage>(trimmed)
+        .map(Some)
+        .map_err(|e| format!("解析聊天记录行失败: {} - {}", trimmed, e))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ChatMessage, ToolCall, ToolFunction};
+    use super::{parse_history_line, ChatMessage, ToolCall, ToolFunction};
 
     #[test]
     fn legacy_history_line_defaults_new_reasoning_fields() {
@@ -107,6 +118,19 @@ mod tests {
             Some(&vec!["sig_1".to_string(), "sig_2".to_string()])
         );
     }
+
+    #[test]
+    fn blank_history_line_is_ignored() {
+        assert!(parse_history_line("   ")
+            .expect("blank line should parse")
+            .is_none());
+    }
+
+    #[test]
+    fn malformed_history_line_reports_error_without_panicking() {
+        let error = parse_history_line("{bad json").expect_err("bad line should return error");
+        assert!(error.contains("解析聊天记录行失败"));
+    }
 }
 
 pub struct ChatHistoryManager {
@@ -168,25 +192,23 @@ impl ChatHistoryManager {
     pub fn load_history(&self) -> Result<Vec<ChatMessage>, String> {
         let file_path = self.get_history_file_path();
 
-        if file_path.is_err() || !file_path.as_ref().unwrap().exists() {
+        let Ok(file_path) = file_path else {
+            return Ok(Vec::new());
+        };
+        if !file_path.exists() {
             return Ok(Vec::new());
         }
 
-        let file_path = file_path.unwrap();
-        let content =
-            fs::read_to_string(&file_path).map_err(|e| format!("读取历史文件失败: {}", e))?;
-
-        let lines: Vec<&str> = content.trim().split('\n').collect();
+        let file = fs::File::open(&file_path).map_err(|e| format!("读取历史文件失败: {}", e))?;
+        let reader = BufReader::new(file);
         let mut messages = Vec::new();
 
-        for line in lines {
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            match serde_json::from_str::<ChatMessage>(line) {
-                Ok(message) => messages.push(message),
-                Err(e) => eprintln!("解析聊天记录行失败: {} - {}", line, e),
+        for line in reader.lines() {
+            let line = line.map_err(|e| format!("读取历史文件失败: {}", e))?;
+            match parse_history_line(&line) {
+                Ok(Some(message)) => messages.push(message),
+                Ok(None) => {}
+                Err(error) => eprintln!("{}", error),
             }
         }
 

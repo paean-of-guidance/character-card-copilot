@@ -1,9 +1,10 @@
-use super::AIToolTrait;
+use super::{error_result, success_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
 };
-use crate::character_storage::{CharacterStorage, TavernCardV2};
+use crate::character_storage::CharacterStorage;
+use crate::tools::character_fields::{get_long_text_field, long_text_field_names, slice_by_chars};
 use crate::tools::world_book_shared::get_usize_parameter;
 use async_trait::async_trait;
 use serde_json::json;
@@ -12,17 +13,6 @@ use tauri::AppHandle;
 
 const DEFAULT_MAX_CHARS: usize = 1200;
 const MAX_MAX_CHARS: usize = 4000;
-const SUPPORTED_FIELDS: &[&str] = &[
-    "description",
-    "personality",
-    "scenario",
-    "first_mes",
-    "mes_example",
-    "creator_notes",
-    "system_prompt",
-    "post_history_instructions",
-];
-
 pub struct ReadCharacterFieldTool;
 
 #[async_trait]
@@ -52,13 +42,13 @@ impl AIToolTrait for ReadCharacterFieldTool {
             .get("field")
             .and_then(|value| value.as_str())
         {
-            Some(value) if SUPPORTED_FIELDS.contains(&value) => value,
+            Some(value) if long_text_field_names().iter().any(|field| field == value) => value,
             Some(value) => {
                 return ToolResult {
                     success: false,
                     data: Some(json!({
-                        "supported_fields": SUPPORTED_FIELDS,
-                        "field": value,
+                            "supported_fields": long_text_field_names(),
+                            "field": value,
                     })),
                     error: Some(format!("字段 '{}' 不支持 read_character_field", value)),
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
@@ -81,7 +71,7 @@ impl AIToolTrait for ReadCharacterFieldTool {
                 }
             };
 
-        let text = match get_field_value(&character_data.card, field) {
+        let text = match get_long_text_field(&character_data.card, field) {
             Some(value) => value,
             None => return error_result(start_time, "读取字段失败"),
         };
@@ -91,20 +81,18 @@ impl AIToolTrait for ReadCharacterFieldTool {
         let end = (start + max_chars).min(total_length);
         let content = slice_by_chars(text, start, end);
 
-        ToolResult {
-            success: true,
-            data: Some(json!({
+        success_result(
+            start_time,
+            json!({
                 "message": "角色字段读取成功",
                 "field": field,
                 "text": content,
-                "start": start,
-                "end": end,
-                "total_length": total_length,
-                "truncated": end < total_length,
-            })),
-            error: None,
-            execution_time_ms: start_time.elapsed().as_millis() as u64,
-        }
+            "start": start,
+            "end": end,
+            "total_length": total_length,
+            "truncated": end < total_length,
+            }),
+        )
     }
 
     fn to_tool_definition(&self) -> ToolDefinition {
@@ -114,12 +102,7 @@ impl AIToolTrait for ReadCharacterFieldTool {
             ChatToolParameter {
                 param_type: "string".to_string(),
                 description: Some("要读取的字段，仅支持长文本字段".to_string()),
-                enum_values: Some(
-                    SUPPORTED_FIELDS
-                        .iter()
-                        .map(|field| (*field).to_string())
-                        .collect(),
-                ),
+                enum_values: Some(long_text_field_names()),
                 items: None,
                 properties: None,
                 required: None,
@@ -160,35 +143,5 @@ impl AIToolTrait for ReadCharacterFieldTool {
                 }),
             },
         }
-    }
-}
-
-fn get_field_value<'a>(card: &'a TavernCardV2, field: &str) -> Option<&'a str> {
-    match field {
-        "description" => Some(&card.data.description),
-        "personality" => Some(&card.data.personality),
-        "scenario" => Some(&card.data.scenario),
-        "first_mes" => Some(&card.data.first_mes),
-        "mes_example" => Some(&card.data.mes_example),
-        "creator_notes" => Some(&card.data.creator_notes),
-        "system_prompt" => Some(&card.data.system_prompt),
-        "post_history_instructions" => Some(&card.data.post_history_instructions),
-        _ => None,
-    }
-}
-
-fn slice_by_chars(text: &str, start: usize, end: usize) -> String {
-    text.chars()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect()
-}
-
-fn error_result(start_time: std::time::Instant, message: &str) -> ToolResult {
-    ToolResult {
-        success: false,
-        data: None,
-        error: Some(message.to_string()),
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
     }
 }

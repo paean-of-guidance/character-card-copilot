@@ -1,9 +1,9 @@
 use crate::ai_cancellation::AI_CANCELLATION_MANAGER;
 use crate::ai_config::{AIConfigService, AIRole};
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::sessions::config::ContextBuilderOptions;
 use crate::backend::domain::{SessionInfo, SessionUnloadReason, TokenUsageStats};
 use crate::character_session::{CharacterSession, SESSION_MANAGER};
+use crate::events::EventEmitter;
 use crate::tools::ToolRegistry;
 use tauri::AppHandle;
 
@@ -16,8 +16,8 @@ impl SessionService {
         let character_data = session.character_data.clone();
         let chat_history = session.chat_history.clone();
 
-        EventBus::character_loaded(app_handle, &session.uuid, &character_data)?;
-        EventBus::chat_history_loaded(app_handle, &session.uuid, &chat_history)?;
+        EventEmitter::send_character_loaded(app_handle, &session.uuid, &character_data)?;
+        EventEmitter::send_chat_history_loaded(app_handle, &session.uuid, &chat_history)?;
 
         Ok(session.get_session_info())
     }
@@ -29,29 +29,26 @@ impl SessionService {
     ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-        let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
-        session.set_selected_ai_role_id(role_id.clone());
-
-        let user_message = session.add_user_message(message);
-
-        EventBus::message_sent(app_handle, &session.uuid, &user_message)?;
-
-        session
-            .save_history(app_handle)
-            .await
-            .map_err(|e| format!("保存用户消息失败: {}", e))?;
-
-        SESSION_MANAGER.update_session(session.clone())?;
+        let (mut session, user_message) =
+            SESSION_MANAGER.with_session(app_handle, uuid.clone(), |session| {
+                session.set_selected_ai_role_id(role_id.clone());
+                let user_message = session.add_user_message(message);
+                session
+                    .save_history_now(app_handle)
+                    .map_err(|e| format!("保存用户消息失败: {}", e))?;
+                Ok((session.clone(), user_message))
+            })?;
+        EventEmitter::send_message_sent(app_handle, &session.uuid, &user_message)?;
 
         Self::generate_ai_response(app_handle, &mut session, "chat", role_id).await
     }
 
     pub async fn unload_session(app_handle: &AppHandle, uuid: String) -> Result<(), String> {
-        if let Some(mut session) = SESSION_MANAGER.get_session(&uuid) {
-            if let Err(e) = session.save_history(app_handle).await {
+        if SESSION_MANAGER.get_session(&uuid).is_some() {
+            if let Err(e) = SESSION_MANAGER
+                .with_existing_session(&uuid, |session| session.save_history_now(app_handle))
+            {
                 eprintln!("保存会话历史记录失败: {}", e);
-            } else {
-                let _ = SESSION_MANAGER.update_session(session);
             }
         }
 
@@ -61,7 +58,7 @@ impl SessionService {
             crate::debug_log!("会话 {} 已卸载", uuid);
 
             let session_info = session.get_session_info();
-            if let Err(e) = EventBus::session_unloaded(
+            if let Err(e) = EventEmitter::send_session_unloaded(
                 app_handle,
                 &uuid,
                 &session_info,
@@ -91,12 +88,11 @@ impl SessionService {
         let mut saved_count = 0;
 
         for session_info in sessions_info {
-            if let Some(mut session) = SESSION_MANAGER.get_session(&session_info.uuid) {
-                match session.save_history(app_handle).await {
-                    Ok(()) => {
-                        saved_count += 1;
-                        let _ = SESSION_MANAGER.update_session(session);
-                    }
+            if SESSION_MANAGER.get_session(&session_info.uuid).is_some() {
+                match SESSION_MANAGER.with_existing_session(&session_info.uuid, |session| {
+                    session.save_history_now(app_handle)
+                }) {
+                    Ok(()) => saved_count += 1,
                     Err(e) => eprintln!("保存会话 {} 历史记录失败: {}", session_info.uuid, e),
                 }
             }
@@ -130,13 +126,12 @@ impl SessionService {
     pub async fn delete_chat_message(app_handle: &AppHandle, index: usize) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-        let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
-
-        let deleted_message = session.delete_message(index)?;
-
-        session.rewrite_all_history(app_handle).await?;
-
-        SESSION_MANAGER.update_session(session)?;
+        let deleted_message =
+            SESSION_MANAGER.with_session(app_handle, uuid.clone(), |session| {
+                let deleted_message = session.delete_message(index)?;
+                session.rewrite_all_history_now(app_handle)?;
+                Ok(deleted_message)
+            })?;
 
         crate::debug_log!("删除消息 [{}]: {:?}", index, deleted_message.content);
 
@@ -150,13 +145,11 @@ impl SessionService {
     ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-        let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
-
-        let edited_message = session.edit_message(index, new_content)?;
-
-        session.rewrite_all_history(app_handle).await?;
-
-        SESSION_MANAGER.update_session(session)?;
+        let edited_message = SESSION_MANAGER.with_session(app_handle, uuid.clone(), |session| {
+            let edited_message = session.edit_message(index, new_content)?;
+            session.rewrite_all_history_now(app_handle)?;
+            Ok(edited_message)
+        })?;
 
         crate::debug_log!("编辑消息 [{}]: {:?}", index, edited_message.content);
 
@@ -169,34 +162,39 @@ impl SessionService {
     ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-        let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
-        let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
+        let (mut session, effective_role_id, user_content) =
+            SESSION_MANAGER.with_session(app_handle, uuid.clone(), |session| {
+                let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
 
-        if session.chat_history.is_empty() {
-            return Err("聊天历史为空，无法重新生成".to_string());
-        }
+                if session.chat_history.is_empty() {
+                    return Err("聊天历史为空，无法重新生成".to_string());
+                }
 
-        let last_message = session.chat_history.last().ok_or("聊天历史为空")?;
-        if last_message.role != "assistant" {
-            return Err("最后一条消息不是AI回复，无法重新生成".to_string());
-        }
+                let last_message = session.chat_history.last().ok_or("聊天历史为空")?;
+                if last_message.role != "assistant" {
+                    return Err("最后一条消息不是AI回复，无法重新生成".to_string());
+                }
 
-        session.delete_last_message()?;
+                session.delete_last_message()?;
+                session.rewrite_all_history_now(app_handle)?;
 
-        session.rewrite_all_history(app_handle).await?;
+                let user_message = session
+                    .chat_history
+                    .last()
+                    .ok_or("没有用户消息，无法重新生成")?;
 
-        let user_message = session
-            .chat_history
-            .last()
-            .ok_or("没有用户消息，无法重新生成")?;
+                if user_message.role != "user" {
+                    return Err("倒数第二条消息不是用户消息，无法重新生成".to_string());
+                }
 
-        if user_message.role != "user" {
-            return Err("倒数第二条消息不是用户消息，无法重新生成".to_string());
-        }
+                Ok((
+                    session.clone(),
+                    effective_role_id,
+                    user_message.content.clone(),
+                ))
+            })?;
 
-        crate::debug_log!("重新生成消息，基于用户消息: {:?}", user_message.content);
-
-        SESSION_MANAGER.update_session(session.clone())?;
+        crate::debug_log!("重新生成消息，基于用户消息: {:?}", user_content);
 
         Self::generate_ai_response(app_handle, &mut session, "regenerate", effective_role_id).await
     }
@@ -207,19 +205,27 @@ impl SessionService {
     ) -> Result<(), String> {
         let uuid = crate::character_state::get_active_character().ok_or("没有活跃的角色会话")?;
 
-        let mut session = SESSION_MANAGER.get_or_create_session(app_handle, uuid.clone())?;
-        let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
+        let (mut session, effective_role_id, user_content) =
+            SESSION_MANAGER.with_session(app_handle, uuid.clone(), |session| {
+                let effective_role_id = role_id.or_else(|| session.selected_ai_role_id.clone());
 
-        if session.chat_history.is_empty() {
-            return Err("聊天历史为空，无法继续对话".to_string());
-        }
+                if session.chat_history.is_empty() {
+                    return Err("聊天历史为空，无法继续对话".to_string());
+                }
 
-        let last_message = session.chat_history.last().ok_or("聊天历史为空")?;
-        if last_message.role != "user" {
-            return Err("最后一条消息不是用户消息，无法继续对话".to_string());
-        }
+                let last_message = session.chat_history.last().ok_or("聊天历史为空")?;
+                if last_message.role != "user" {
+                    return Err("最后一条消息不是用户消息，无法继续对话".to_string());
+                }
 
-        crate::debug_log!("继续对话，基于最后一条用户消息: {:?}", last_message.content);
+                Ok((
+                    session.clone(),
+                    effective_role_id,
+                    last_message.content.clone(),
+                ))
+            })?;
+
+        crate::debug_log!("继续对话，基于最后一条用户消息: {:?}", user_content);
 
         Self::generate_ai_response(app_handle, &mut session, "continue", effective_role_id).await
     }
@@ -298,8 +304,13 @@ impl SessionService {
         Some(session.add_assistant_message(content, reasoning_content, tool_calls))
     }
 
-    fn build_context_options(ai_role: &AIRole) -> ContextBuilderOptions {
+    fn context_token_limit(context_window: u32) -> usize {
+        ((context_window as f64) * 0.8).round() as usize
+    }
+
+    fn build_context_options(ai_role: &AIRole, context_window: u32) -> ContextBuilderOptions {
         let mut options = ContextBuilderOptions::default();
+        options.token_limit = Self::context_token_limit(context_window);
         options.ai_role = ai_role.context_role_template.clone();
         options.ai_task = ai_role.context_task_template.clone();
         options.ai_instructions = ai_role.context_instructions_template.clone();
@@ -317,13 +328,17 @@ impl SessionService {
             AIConfigService::resolve_role(app_handle, requested_role_id.as_deref())?;
         session.set_selected_ai_role_id(Some(resolved_role_id.clone()));
 
-        let context_builder =
-            crate::context_builder::create_context_builder(Self::build_context_options(&ai_role));
+        let api_config = crate::api_config::ApiConfigService::get_default_api_config(app_handle)?
+            .ok_or("没有可用的API配置")?;
+        let context_token_limit = Self::context_token_limit(api_config.context_window);
+        let context_builder = crate::context_builder::create_context_builder(
+            Self::build_context_options(&ai_role, api_config.context_window),
+        );
         let context_result = context_builder
             .build_full_context(&session.character_data, &session.chat_history, None)
             .map_err(|e| format!("构建上下文失败: {}", e))?;
 
-        EventBus::context_built(app_handle, &session.uuid, &context_result)?;
+        EventEmitter::send_context_built(app_handle, &session.uuid, &context_result)?;
 
         let mut ai_chat_messages = Vec::new();
 
@@ -404,9 +419,6 @@ impl SessionService {
                 tool_call_id: current_msg.tool_call_id,
             });
         }
-
-        let api_config = crate::api_config::ApiConfigService::get_default_api_config(app_handle)?
-            .ok_or("没有可用的API配置")?;
 
         let chat_tools = if ai_role.tools_enabled {
             ToolRegistry::get_available_tools_global()
@@ -502,7 +514,7 @@ impl SessionService {
 
                     SESSION_MANAGER.update_session(session.clone())?;
 
-                    EventBus::progress(
+                    EventEmitter::send_progress(
                         app_handle,
                         &session.uuid,
                         operation_type,
@@ -608,7 +620,7 @@ impl SessionService {
                         .collect()
                 });
 
-        EventBus::message_received(
+        EventEmitter::send_message_received(
             app_handle,
             &session.uuid,
             &ai_response,
@@ -621,12 +633,14 @@ impl SessionService {
             completion_tokens: ai_response_result.usage.completion_tokens as usize,
             total_tokens: ai_response_result.usage.total_tokens as usize,
             context_tokens: context_result.total_tokens,
-            budget_utilization: (ai_response_result.usage.total_tokens as f64 / 102400.0 * 100.0),
+            budget_utilization: (ai_response_result.usage.total_tokens as f64
+                / context_token_limit.max(1) as f64
+                * 100.0),
         };
 
-        EventBus::token_stats(app_handle, &session.uuid, token_stats)?;
+        EventEmitter::send_token_stats(app_handle, &session.uuid, token_stats)?;
 
-        EventBus::progress(
+        EventEmitter::send_progress(
             app_handle,
             &session.uuid,
             operation_type,

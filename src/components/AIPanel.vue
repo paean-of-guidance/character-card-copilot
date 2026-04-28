@@ -291,16 +291,18 @@ async function initializeChatHistory() {
 
         // 转换为前端消息格式（保留所有 role 类型）
         if (history.length > 0) {
-            messages.value = history.map((msg, index) => ({
-                id: `${msg.timestamp || index}_${characterId}`,
-                role: msg.role, // 保留原始 role：user/assistant/tool
-                content: msg.content,
-                timestamp: new Date(msg.timestamp || Date.now()),
-                // 保留工具调用相关字段
-                tool_calls: msg.tool_calls,
-                tool_call_id: msg.tool_call_id,
-                name: msg.name,
-            }));
+                    messages.value = history.map((msg, index) => ({
+                        id: `${msg.timestamp || index}_${characterId}`,
+                        role: msg.role, // 保留原始 role：user/assistant/tool
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp || Date.now()),
+                        // 保留工具调用相关字段
+                        tool_calls: msg.tool_calls,
+                        tool_call_id: msg.tool_call_id,
+                        name: msg.name,
+                        reasoningContent: msg.reasoning_content,
+                        reasoningExpanded: msg.reasoning_content ? false : undefined,
+                    }));
 
             devLog(
                 `为角色 ${props.characterData.name} (ID: ${characterId}) 加载了 ${messages.value.length} 条聊天历史记录`,
@@ -823,18 +825,20 @@ onMounted(async () => {
         const storedHistory = chatStore.getChatHistory(characterId);
         if (storedHistory.length > 0) {
             devLog(`📦 从 Store 恢复 ${storedHistory.length} 条聊天历史`);
-            messages.value = storedHistory.map((msg, index) => ({
-                id: `${msg.timestamp || index}_${characterId}`,
-                role: msg.role, // 保留原始 role：user/assistant/tool
-                content: msg.content,
+                messages.value = storedHistory.map((msg, index) => ({
+                    id: `${msg.timestamp || index}_${characterId}`,
+                    role: msg.role, // 保留原始 role：user/assistant/tool
+                    content: msg.content,
                 timestamp: new Date(
                     (msg.timestamp || Date.now() / 1000) * 1000,
                 ),
-                // 保留工具调用相关字段
-                tool_calls: msg.tool_calls,
-                tool_call_id: msg.tool_call_id,
-                name: msg.name,
-            }));
+                    // 保留工具调用相关字段
+                    tool_calls: msg.tool_calls,
+                    tool_call_id: msg.tool_call_id,
+                    name: msg.name,
+                    reasoningContent: msg.reasoning_content,
+                    reasoningExpanded: msg.reasoning_content ? false : undefined,
+                }));
         }
     }
 
@@ -864,14 +868,15 @@ onUnmounted(() => {
     // 保存当前聊天历史到 store
     const characterId = getCurrentCharacterId();
     if (characterId && messages.value.length > 0) {
-        const chatMessages: ChatMessage[] = messages.value.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-            timestamp: Math.floor(msg.timestamp.getTime() / 1000),
-            name: undefined,
-            tool_calls: undefined,
-            tool_call_id: undefined,
-        }));
+            const chatMessages: ChatMessage[] = messages.value.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+                timestamp: Math.floor(msg.timestamp.getTime() / 1000),
+                name: msg.name,
+                reasoning_content: msg.reasoningContent,
+                tool_calls: msg.tool_calls,
+                tool_call_id: msg.tool_call_id,
+            }));
         chatStore.setChatHistory(characterId, chatMessages);
         devLog(`💾 组件卸载，保存 ${chatMessages.length} 条消息到 Store`);
     }

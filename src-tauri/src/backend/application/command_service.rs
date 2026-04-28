@@ -1,7 +1,7 @@
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::{CommandMetadata, CommandResult};
 use crate::command_system::command::CommandContext;
 use crate::command_system::registry::COMMAND_REGISTRY;
+use crate::events::EventEmitter;
 
 pub struct CommandService;
 
@@ -48,7 +48,7 @@ impl CommandService {
         };
 
         if let Some(ref uuid) = context.session_uuid {
-            EventBus::progress(
+            EventEmitter::send_progress(
                 app_handle,
                 uuid,
                 &format!("command:{}", command_id),
@@ -68,7 +68,7 @@ impl CommandService {
                 "命令执行失败"
             };
 
-            EventBus::progress(
+            EventEmitter::send_progress(
                 app_handle,
                 &uuid,
                 &format!("command:{}", command_id),

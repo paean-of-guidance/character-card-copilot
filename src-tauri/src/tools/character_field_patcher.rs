@@ -1,28 +1,20 @@
-use super::AIToolTrait;
+use super::{failure_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
 };
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::CharacterUpdateType;
-use crate::character_storage::{CharacterStorage, TavernCardV2};
+use crate::character_storage::CharacterStorage;
+use crate::events::EventEmitter;
+use crate::tools::character_fields::{
+    get_long_text_field, long_text_field_names, set_long_text_field, slice_by_chars,
+};
 use crate::tools::world_book_shared::{get_bool_parameter, unique_fragments_from_text};
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::AppHandle;
-
-const SUPPORTED_FIELDS: &[(&str, &str)] = &[
-    ("description", "角色描述"),
-    ("personality", "性格特点"),
-    ("scenario", "场景设定"),
-    ("first_mes", "开场白"),
-    ("mes_example", "对话示例"),
-    ("creator_notes", "创作者笔记"),
-    ("system_prompt", "系统提示词"),
-    ("post_history_instructions", "历史后指令"),
-];
 
 const CONTEXT_RADIUS: usize = 50;
 const PREVIEW_CHAR_LIMIT: usize = 160;
@@ -163,7 +155,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
             };
 
         let mut tavern_card = character_data.card;
-        let original_text = match get_field_value(&tavern_card, &field) {
+        let original_text = match get_long_text_field(&tavern_card, &field) {
             Some(value) => value.to_string(),
             None => {
                 return failure_result(
@@ -172,7 +164,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
                     format!("字段 '{}' 不支持 patch_character_field", field),
                     Some(json!({
                         "field": field,
-                        "supported_fields": supported_field_names(),
+                            "supported_fields": long_text_field_names(),
                     })),
                 )
             }
@@ -239,7 +231,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
                         }
                     };
 
-                if let Err(error) = EventBus::character_updated(
+                if let Err(error) = EventEmitter::send_character_updated(
                     app_handle,
                     &character_uuid,
                     &updated_character_data,
@@ -277,7 +269,7 @@ impl AIToolTrait for PatchCharacterFieldTool {
                     "要修改的字段，仅支持长文本字段，如 description、personality、scenario 等"
                         .to_string(),
                 ),
-                enum_values: Some(supported_field_names()),
+                enum_values: Some(long_text_field_names()),
                 items: None,
                 properties: None,
                 required: None,
@@ -444,43 +436,19 @@ fn required_string(
     }
 }
 
-fn get_field_value<'a>(card: &'a TavernCardV2, field: &str) -> Option<&'a str> {
-    match field {
-        "description" => Some(&card.data.description),
-        "personality" => Some(&card.data.personality),
-        "scenario" => Some(&card.data.scenario),
-        "first_mes" => Some(&card.data.first_mes),
-        "mes_example" => Some(&card.data.mes_example),
-        "creator_notes" => Some(&card.data.creator_notes),
-        "system_prompt" => Some(&card.data.system_prompt),
-        "post_history_instructions" => Some(&card.data.post_history_instructions),
-        _ => None,
-    }
-}
-
-fn set_field_value(card: &mut TavernCardV2, field: &str, value: String) -> Result<(), ToolFailure> {
-    match field {
-        "description" => card.data.description = value,
-        "personality" => card.data.personality = value,
-        "scenario" => card.data.scenario = value,
-        "first_mes" => card.data.first_mes = value,
-        "mes_example" => card.data.mes_example = value,
-        "creator_notes" => card.data.creator_notes = value,
-        "system_prompt" => card.data.system_prompt = value,
-        "post_history_instructions" => card.data.post_history_instructions = value,
-        _ => {
-            return Err(ToolFailure {
-                code: "unsupported_field",
-                message: format!("字段 '{}' 不支持 patch_character_field", field),
-                details: Some(json!({
-                    "field": field,
-                    "supported_fields": supported_field_names(),
-                })),
-            })
-        }
-    }
-
-    Ok(())
+fn set_field_value(
+    card: &mut crate::character_storage::TavernCardV2,
+    field: &str,
+    value: String,
+) -> Result<(), ToolFailure> {
+    set_long_text_field(card, field, value).map_err(|_| ToolFailure {
+        code: "unsupported_field",
+        message: format!("字段 '{}' 不支持 patch_character_field", field),
+        details: Some(json!({
+            "field": field,
+            "supported_fields": long_text_field_names(),
+        })),
+    })
 }
 
 fn apply_patch(
@@ -727,37 +695,6 @@ fn preview_tail(text: &str) -> String {
     let total = text.chars().count();
     let start = total.saturating_sub(PREVIEW_CHAR_LIMIT);
     slice_by_chars(text, start, total)
-}
-
-fn slice_by_chars(text: &str, start: usize, end: usize) -> String {
-    text.chars()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect()
-}
-
-fn supported_field_names() -> Vec<String> {
-    SUPPORTED_FIELDS
-        .iter()
-        .map(|(field, _)| (*field).to_string())
-        .collect()
-}
-
-fn failure_result(
-    start_time: std::time::Instant,
-    code: &'static str,
-    message: String,
-    details: Option<Value>,
-) -> ToolResult {
-    ToolResult {
-        success: false,
-        data: Some(json!({
-            "error_code": code,
-            "details": details,
-        })),
-        error: Some(message),
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
-    }
 }
 
 #[cfg(test)]

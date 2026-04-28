@@ -251,6 +251,17 @@ impl CharacterStorage {
         Self::write_thumbnail(&image, thumbnail_path)
     }
 
+    fn has_current_asset_files(
+        character_data: &CharacterData,
+        card_path: &Path,
+        thumbnail_path: &Path,
+    ) -> bool {
+        character_data.background_path == CARD_FILE_NAME
+            && character_data.thumbnail_path == THUMBNAIL_FILE_NAME
+            && card_path.exists()
+            && thumbnail_path.exists()
+    }
+
     /// 将存储中的相对路径转换为绝对路径（返回给前端时使用）
     fn apply_absolute_paths(
         app_handle: &tauri::AppHandle,
@@ -285,6 +296,10 @@ impl CharacterStorage {
     ) -> Result<(), String> {
         let card_path = Self::get_card_image_path(app_handle, &character_data.uuid)?;
         let thumbnail_path = Self::get_thumbnail_image_path(app_handle, &character_data.uuid)?;
+        if Self::has_current_asset_files(character_data, &card_path, &thumbnail_path) {
+            return Ok(());
+        }
+
         let mut updated = false;
 
         if !character_data.background_path.is_empty()

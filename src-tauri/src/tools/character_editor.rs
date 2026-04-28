@@ -3,14 +3,13 @@ use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
 };
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::CharacterStorage;
+use crate::events::EventEmitter;
+use crate::tools::character_fields::{parse_alternate_greetings, parse_tags};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use tauri::AppHandle;
-
-const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
 
 /// 角色编辑工具
 pub struct EditCharacterTool;
@@ -116,19 +115,11 @@ impl AIToolTrait for EditCharacterTool {
                         updated_fields.push(("post_history_instructions", "历史后指令"));
                     }
                     "alternate_greetings" => {
-                        tavern_card.data.alternate_greetings = value_str
-                            .split(ALTERNATE_GREETING_MARKER)
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect();
+                        tavern_card.data.alternate_greetings = parse_alternate_greetings(value_str);
                         updated_fields.push(("alternate_greetings", "备用问候语"));
                     }
                     "tags" => {
-                        tavern_card.data.tags = value_str
-                            .split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect();
+                        tavern_card.data.tags = parse_tags(value_str);
                         updated_fields.push(("tags", "标签"));
                     }
                     "creator" => {
@@ -183,7 +174,7 @@ impl AIToolTrait for EditCharacterTool {
                     };
 
                 // ✅ 使用标准事件发送方法（包含完整的 character_data）
-                if let Err(e) = EventBus::character_updated(
+                if let Err(e) = EventEmitter::send_character_updated(
                     app_handle,
                     &character_uuid,
                     &updated_character_data,

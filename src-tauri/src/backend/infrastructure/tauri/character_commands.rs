@@ -1,8 +1,7 @@
-use crate::backend::application::event_bus::EventBus;
 use crate::backend::domain::CharacterUpdateType;
 use crate::character_storage::{CharacterData, CharacterStorage, TavernCardV2};
-
-const ALTERNATE_GREETING_MARKER: &str = "<START_ALT>";
+use crate::events::EventEmitter;
+use crate::tools::character_fields::{parse_alternate_greetings, parse_tags};
 
 #[tauri::command]
 pub async fn get_all_characters(
@@ -61,18 +60,10 @@ pub async fn update_character_field(
             character_data.card.data.post_history_instructions = field_value
         }
         "alternate_greetings" => {
-            character_data.card.data.alternate_greetings = field_value
-                .split(ALTERNATE_GREETING_MARKER)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
+            character_data.card.data.alternate_greetings = parse_alternate_greetings(&field_value);
         }
         "tags" => {
-            character_data.card.data.tags = field_value
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
+            character_data.card.data.tags = parse_tags(&field_value);
         }
         "creator" => character_data.card.data.creator = field_value,
         "character_version" => character_data.card.data.character_version = field_value,
@@ -81,7 +72,7 @@ pub async fn update_character_field(
 
     CharacterStorage::update_character(&app_handle, &uuid, &character_data.card)?;
 
-    EventBus::character_updated(
+    EventEmitter::send_character_updated(
         &app_handle,
         &uuid,
         &character_data,

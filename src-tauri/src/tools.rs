@@ -1,5 +1,6 @@
 pub mod character_editor;
 pub mod character_field_patcher;
+pub mod character_fields;
 pub mod read_character_field;
 pub mod registry;
 pub mod traits;

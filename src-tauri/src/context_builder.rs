@@ -67,10 +67,34 @@ pub struct ContextBuilder {
     options: ContextBuilderOptions,
 }
 
+const TOOL_DECLARATIONS: &str = r#"tools:
+  - name: "patch_character_field"
+    description: "对 description、personality 等长文本字段做局部替换或插入；支持 dry_run 预览；search 必须唯一命中，否则失败"
+    parameters: {"type": "object", "properties": {"field": {"type": "string"}, "operation": {"type": "string", "enum": ["replace", "insert_before", "insert_after"]}, "match_mode": {"type": "string", "enum": ["exact", "regex"]}, "search": {"type": "string"}, "content": {"type": "string"}, "dry_run": {"type": "boolean"}}}
+  - name: "read_character_field"
+    description: "读取 description、personality 等长文本字段内容，支持分页"
+    parameters: {"type": "object", "properties": {"field": {"type": "string"}, "start": {"type": "integer"}, "max_chars": {"type": "integer"}}}
+  - name: "edit_character"
+    description: "整字段重写角色字段；仅在用户明确要求整段重写时使用"
+    parameters: {"type": "object", "properties": {"field": {"type": "string"}, "value": {"type": "string"}}}
+  - name: "list_world_book_entries"
+    description: "列出当前角色的世界书条目摘要，适合删除或编辑前先查看候选"
+    parameters: {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}}
+  - name: "read_world_book_entry"
+    description: "读取单个世界书条目的完整内容；优先使用 entry_id"
+    parameters: {"type": "object", "properties": {"entry_id": {"type": "string"}, "name": {"type": "string"}, "key": {"type": "string"}}}
+  - name: "create_world_book_entry"
+    description: "创建世界书条目"
+    parameters: {"type": "object", "properties": {"name": {"type": "string"}, "content": {"type": "string"}, "keys": {"type": "array", "items": {"type": "string"}}}}
+  - name: "update_world_book_entry"
+    description: "更新单个世界书条目的结构化字段；优先使用 entry_id"
+    parameters: {"type": "object", "properties": {"entry_id": {"type": "string"}, "name": {"type": "string"}, "key": {"type": "string"}, "keys": {"type": "string"}, "content": {"type": "string"}, "comment": {"type": "string"}, "enabled": {"type": "boolean"}, "priority": {"type": "integer"}, "position": {"type": "string"}, "depth": {"type": "integer"}, "probability": {"type": "integer"}}}
+"#;
+
 impl ContextBuilder {
     /// 创建新的上下文构建器
     pub fn new(options: ContextBuilderOptions) -> Self {
-        let token_budget = TokenBudget::default();
+        let token_budget = TokenBudget::from_total_limit(options.token_limit);
         Self {
             token_budget,
             options,
@@ -151,43 +175,7 @@ impl ContextBuilder {
         content.push_str(&format!("task: {}\n", task));
 
         if self.options.tools_enabled {
-            content.push_str("tools:\n");
-            content.push_str("  - name: \"patch_character_field\"\n");
-            content.push_str("    description: \"对 description、personality 等长文本字段做局部替换或插入；支持 dry_run 预览；search 必须唯一命中，否则失败\"\n");
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"operation\": {\"type\": \"string\", \"enum\": [\"replace\", \"insert_before\", \"insert_after\"]}, \"match_mode\": {\"type\": \"string\", \"enum\": [\"exact\", \"regex\"]}, \"search\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"dry_run\": {\"type\": \"boolean\"}}}\n");
-
-            content.push_str("  - name: \"read_character_field\"\n");
-            content.push_str(
-                "    description: \"读取 description、personality 等长文本字段内容，支持分页\"\n",
-            );
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"start\": {\"type\": \"integer\"}, \"max_chars\": {\"type\": \"integer\"}}}\n");
-
-            content.push_str("  - name: \"edit_character\"\n");
-            content.push_str(
-                "    description: \"整字段重写角色字段；仅在用户明确要求整段重写时使用\"\n",
-            );
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"field\": {\"type\": \"string\"}, \"value\": {\"type\": \"string\"}}}\n");
-
-            content.push_str("  - name: \"list_world_book_entries\"\n");
-            content.push_str(
-                "    description: \"列出当前角色的世界书条目摘要，适合删除或编辑前先查看候选\"\n",
-            );
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}}}\n");
-
-            content.push_str("  - name: \"read_world_book_entry\"\n");
-            content
-                .push_str("    description: \"读取单个世界书条目的完整内容；优先使用 entry_id\"\n");
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"entry_id\": {\"type\": \"string\"}, \"name\": {\"type\": \"string\"}, \"key\": {\"type\": \"string\"}}}\n");
-
-            content.push_str("  - name: \"create_world_book_entry\"\n");
-            content.push_str("    description: \"创建世界书条目\"\n");
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"keys\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}\n");
-
-            content.push_str("  - name: \"update_world_book_entry\"\n");
-            content.push_str(
-                "    description: \"更新单个世界书条目的结构化字段；优先使用 entry_id\"\n",
-            );
-            content.push_str("    parameters: {\"type\": \"object\", \"properties\": {\"entry_id\": {\"type\": \"string\"}, \"name\": {\"type\": \"string\"}, \"key\": {\"type\": \"string\"}, \"keys\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}, \"comment\": {\"type\": \"string\"}, \"enabled\": {\"type\": \"boolean\"}, \"priority\": {\"type\": \"integer\"}, \"position\": {\"type\": \"string\"}, \"depth\": {\"type\": \"integer\"}, \"probability\": {\"type\": \"integer\"}}}\n");
+            content.push_str(TOOL_DECLARATIONS);
         }
 
         // 添加指令
@@ -230,7 +218,7 @@ impl ContextBuilder {
         });
 
         // 2. 构建世界书消息（如果存在）
-        let (_worldbook_content, worldbook_tokens) =
+        let worldbook_tokens =
             if let Some(character_book) = &character_data.card.data.character_book {
                 let worldbook_content = self.build_worldbook_content(character_book)?;
                 let worldbook_tokens = self.count_tokens(&worldbook_content);
@@ -244,9 +232,9 @@ impl ContextBuilder {
                     tool_call_id: None,
                 });
 
-                (worldbook_content, worldbook_tokens)
+                worldbook_tokens
             } else {
-                (String::new(), 0)
+                0
             };
 
         Ok((messages, character_tokens, worldbook_tokens))

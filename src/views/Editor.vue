@@ -23,6 +23,11 @@ import { listen } from "@tauri-apps/api/event";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { tokenCounter } from "@/utils/tokenCounter";
 import { devLog } from "@/utils/logger";
+import {
+    formatAlternateGreetingsForInput,
+    serializeAlternateGreetingsValue,
+    serializeTagsValue,
+} from "@/utils/characterFieldFormatters";
 import { useNotification } from "@/composables/useNotification";
 import { useModal } from "@/composables/useModal";
 import type {
@@ -46,7 +51,8 @@ const aiPanelVisible = ref(true);
 const backgroundPath = ref<string>("");
 const thumbnailPath = ref<string>("");
 const isUploading = ref(false);
-const ALTERNATE_GREETING_MARKER = "<START_ALT>";
+const loadedUuid = ref<string>("");
+let loadingPromise: Promise<void> | null = null;
 
 const avatarSrc = computed(() => {
     return imageSrc.value;
@@ -254,41 +260,6 @@ function cleanupEventListeners() {
 /**
  * 从CharacterData更新编辑器表单数据
  */
-function parseAlternateGreetingSegments(
-    source: string | string[] | undefined | null,
-) {
-    if (Array.isArray(source)) {
-        return source
-            .map((segment) => segment.trim())
-            .filter((segment) => segment.length > 0);
-    }
-
-    return (source || "")
-        .split(ALTERNATE_GREETING_MARKER)
-        .map((segment) => segment.trim())
-        .filter((segment) => segment.length > 0);
-}
-
-function formatAlternateGreetingsForInput(values?: string[]) {
-    const segments = parseAlternateGreetingSegments(values ?? []);
-    if (!segments.length) {
-        return "";
-    }
-    return segments
-        .map((segment) => `${ALTERNATE_GREETING_MARKER}\n${segment}`)
-        .join("\n");
-}
-
-function serializeAlternateGreetingsValue(value: string | string[]) {
-    const segments = parseAlternateGreetingSegments(value);
-    if (!segments.length) {
-        return "";
-    }
-    return segments
-        .map((segment) => `${ALTERNATE_GREETING_MARKER}\n${segment}`)
-        .join("\n");
-}
-
 async function updateEditorFromCharacterData(incomingCharacterData: any) {
     try {
         // 保存完整的角色对象
@@ -393,9 +364,14 @@ const characterData = ref({
 // 加载角色数据
 async function loadCharacterData(uuid: string) {
     if (!uuid) return;
+    if (loadedUuid.value === uuid && fullCharacterData.value) return;
+    if (loadingPromise) {
+        await loadingPromise;
+        if (loadedUuid.value === uuid && fullCharacterData.value) return;
+    }
 
     isLoading.value = true;
-    try {
+    loadingPromise = (async () => {
         // ✅ 使用 Store 加载（带缓存）
         let character = await characterStore.getCharacterByUUID(uuid);
         if (!character) {
@@ -437,12 +413,18 @@ async function loadCharacterData(uuid: string) {
                 tags: [...character.card.data.tags],
                 creator: character.card.data.creator,
                 character_version: character.card.data.character_version,
-            };
-        }
+                  };
+                  loadedUuid.value = uuid;
+              }
+    })();
+
+    try {
+        await loadingPromise;
     } catch (error) {
         console.error("加载角色数据失败:", error);
         showErrorToast("加载角色数据失败", "加载失败");
     } finally {
+        loadingPromise = null;
         isLoading.value = false;
     }
 }
@@ -461,10 +443,7 @@ async function updateField(
             return serializeAlternateGreetingsValue(value);
         }
         if (fieldName === "tags") {
-            if (Array.isArray(value)) {
-                return value.join(",");
-            }
-            return value || "";
+            return serializeTagsValue(value);
         }
         if (Array.isArray(value)) {
             return value.join("\n");
@@ -496,9 +475,10 @@ async function updateField(
 // 监听路由参数变化
 watch(
     () => route.params.uuid,
-    (newUuid: string | string[]) => {
+    async (newUuid: string | string[]) => {
         if (newUuid && typeof newUuid === "string") {
-            loadCharacterData(newUuid);
+            await loadCharacterData(newUuid);
+            await CharacterStateService.setActiveCharacter(newUuid);
         }
     },
     { immediate: true },
@@ -516,14 +496,6 @@ onMounted(async () => {
 
     // 初始化后端事件监听器
     await initializeBackendEventListeners();
-
-    // 检查路由参数
-    const uuid = route.params.uuid as string;
-    if (uuid) {
-        await loadCharacterData(uuid);
-        // 设置当前活跃角色
-        await CharacterStateService.setActiveCharacter(uuid);
-    }
 
     // ✅ 已移除旧的事件监听器，使用 initializeBackendEventListeners 中的标准监听器
 });

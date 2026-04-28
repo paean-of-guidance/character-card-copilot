@@ -1,4 +1,4 @@
-use super::AIToolTrait;
+use super::{detailed_error_result, AIToolTrait};
 use crate::ai_tools::{
     ToolCallRequest, ToolDefinition, ToolFunction, ToolParameter as ChatToolParameter,
     ToolParameters, ToolResult,
@@ -34,26 +34,32 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
 
         let character_uuid = match &request.character_uuid {
             Some(uuid) => uuid.clone(),
-            None => return error_result(start_time, "缺少角色UUID", None),
+            None => return detailed_error_result(start_time, "缺少角色UUID", None),
         };
 
         let mut character_data =
             match CharacterStorage::get_character_by_uuid(app_handle, &character_uuid) {
                 Ok(Some(data)) => data,
-                Ok(None) => return error_result(start_time, "角色不存在", None),
+                Ok(None) => return detailed_error_result(start_time, "角色不存在", None),
                 Err(error) => {
-                    return error_result(start_time, &format!("获取角色数据失败: {}", error), None)
+                    return detailed_error_result(
+                        start_time,
+                        &format!("获取角色数据失败: {}", error),
+                        None,
+                    )
                 }
             };
 
         let world_book = match character_data.card.data.character_book.as_mut() {
             Some(book) => book,
-            None => return error_result(start_time, "当前角色没有世界书", None),
+            None => return detailed_error_result(start_time, "当前角色没有世界书", None),
         };
 
         let selection = match locate_entry(&world_book.entries, &request.parameters, "更新") {
             Ok(selection) => selection,
-            Err(error) => return error_result(start_time, &error.message, Some(error.details)),
+            Err(error) => {
+                return detailed_error_result(start_time, &error.message, Some(error.details))
+            }
         };
 
         let (updated_fields, entry_snapshot) = {
@@ -74,7 +80,7 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
         };
 
         if updated_fields.is_empty() {
-            return error_result(
+            return detailed_error_result(
                 start_time,
                 "必须提供至少一个要更新的字段",
                 Some(json!({
@@ -124,7 +130,9 @@ impl AIToolTrait for UpdateWorldBookEntryTool {
                     execution_time_ms: start_time.elapsed().as_millis() as u64,
                 }
             }
-            Err(error) => error_result(start_time, &format!("保存世界书变更失败: {}", error), None),
+            Err(error) => {
+                detailed_error_result(start_time, &format!("保存世界书变更失败: {}", error), None)
+            }
         }
     }
 
@@ -290,17 +298,4 @@ fn should_update_name(request: &ToolCallRequest) -> bool {
         || request.parameters.contains_key("position")
         || request.parameters.contains_key("depth")
         || request.parameters.contains_key("probability")
-}
-
-fn error_result(
-    start_time: std::time::Instant,
-    message: &str,
-    details: Option<serde_json::Value>,
-) -> ToolResult {
-    ToolResult {
-        success: false,
-        data: details.map(|details| json!({ "details": details })),
-        error: Some(message.to_string()),
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
-    }
 }

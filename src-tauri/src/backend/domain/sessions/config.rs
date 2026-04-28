@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+const DEFAULT_TOKEN_LIMIT: usize = 102400;
+
 /// Token 预算分配策略
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenBudget {
-    /// 总限制：102400 (128k * 0.8)
+    /// 总限制
     pub total_limit: usize,
     /// System 消息保留：15%
     pub system_reserved: usize,
@@ -18,7 +20,12 @@ pub struct TokenBudget {
 
 impl Default for TokenBudget {
     fn default() -> Self {
-        let total = 102400; // 128k * 0.8
+        Self::from_total_limit(DEFAULT_TOKEN_LIMIT)
+    }
+}
+
+impl TokenBudget {
+    pub fn from_total_limit(total: usize) -> Self {
         Self {
             total_limit: total,
             system_reserved: (total as f64 * 0.15) as usize,
@@ -64,7 +71,7 @@ impl Default for ContextBuilderOptions {
         );
 
         Self {
-            token_limit: 102400,
+            token_limit: DEFAULT_TOKEN_LIMIT,
             enable_smart_truncation: true,
             ai_role: "{{ROLE}}".to_string(),
             ai_task: "{{TASK}}".to_string(),
